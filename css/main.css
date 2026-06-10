@@ -1,0 +1,226 @@
+:root {
+  --paper: #f4ecd8;
+  --paper-dark: #e7d8b7;
+  --ink: #2f261d;
+  --muted-ink: #6f604e;
+  --cinnabar: #9f3f2f;
+  --border: #c9b58c;
+  --shadow: rgba(47, 38, 29, 0.16);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #fbf5e8 0, var(--paper) 45%, #d8c49a 100%);
+  color: var(--ink);
+  font-family: "Noto Serif SC", "Songti SC", "SimSun", serif;
+}
+
+button,
+select {
+  font: inherit;
+}
+
+.app-shell {
+  width: min(100%, 720px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.top-bar,
+.panel {
+  border: 1px solid var(--border);
+  background: rgba(244, 236, 216, 0.88);
+  box-shadow: 0 8px 22px var(--shadow);
+}
+
+.top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  backdrop-filter: blur(6px);
+}
+
+.date-line {
+  color: var(--muted-ink);
+  font-size: 0.9rem;
+}
+
+.time-line {
+  margin-top: 3px;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.time-controls {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+}
+
+.time-controls select,
+.small-button,
+.restart-button,
+.action-grid button,
+.death-card button {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff8e9;
+  color: var(--ink);
+  padding: 8px 10px;
+}
+
+.small-button {
+  grid-column: 1 / -1;
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  opacity: 0.48;
+}
+
+.panel {
+  border-radius: 14px;
+  padding: 16px;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 8px;
+  font-size: 1.45rem;
+}
+
+h2 {
+  margin-bottom: 10px;
+  font-size: 1.1rem;
+}
+
+.flavor,
+.action-note {
+  color: var(--muted-ink);
+  line-height: 1.65;
+}
+
+.status-grid,
+.money-row {
+  display: grid;
+  gap: 10px;
+}
+
+.status-grid {
+  grid-template-columns: 1fr;
+}
+
+.status-item,
+.money-item {
+  border-left: 3px solid var(--cinnabar);
+  background: rgba(255, 248, 233, 0.72);
+  padding: 10px 12px;
+}
+
+.status-label,
+.money-label {
+  color: var(--muted-ink);
+  font-size: 0.85rem;
+}
+
+.status-value,
+.money-value {
+  margin-top: 3px;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.money-row {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.action-panel {
+  margin-top: auto;
+}
+
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.action-grid button {
+  min-height: 54px;
+  background: linear-gradient(#fffaf0, #eee0bf);
+}
+
+.restart-button {
+  width: 100%;
+  margin-top: 12px;
+  color: var(--cinnabar);
+}
+
+.death-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(20, 16, 12, 0.7);
+}
+
+.death-overlay.hidden {
+  display: none;
+}
+
+.death-card {
+  width: min(100%, 420px);
+  border: 2px solid var(--cinnabar);
+  border-radius: 16px;
+  background: var(--paper);
+  padding: 24px;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+}
+
+.death-card h2 {
+  color: var(--cinnabar);
+  font-size: 1.6rem;
+}
+
+.death-card button {
+  width: 100%;
+  margin-top: 10px;
+  background: var(--cinnabar);
+  color: #fff8e9;
+}
+
+@media (min-width: 560px) {
+  .status-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .action-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}

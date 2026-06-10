@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>临安一日 · 生存骨架</title>
+    <link rel="stylesheet" href="css/main.css" />
+  </head>
+  <body>
+    <main class="app-shell" id="app">
+      <header class="top-bar">
+        <div class="time-readout" aria-live="polite">
+          <div class="date-line" id="dateLine">载入中</div>
+          <div class="time-line" id="timeLine">晨 06:00</div>
+        </div>
+        <div class="time-controls" aria-label="时间控制">
+          <label for="speedSelect">流速</label>
+          <select id="speedSelect">
+            <option value="0">一档</option>
+            <option value="1">二档</option>
+            <option value="2">三档</option>
+            <option value="3">四档</option>
+            <option value="4">五档</option>
+          </select>
+          <button type="button" id="pauseButton" class="small-button">暂停</button>
+        </div>
+      </header>
+
+      <section class="panel status-panel" aria-labelledby="statusTitle">
+        <h1 id="statusTitle">临安求生</h1>
+        <p class="flavor">南宋临安，晨雾未散。你只是城中一介普通人，先要活过今日。</p>
+        <div class="status-grid" id="statusGrid"></div>
+      </section>
+
+      <section class="panel money-panel" aria-labelledby="moneyTitle">
+        <h2 id="moneyTitle">钱财</h2>
+        <div class="money-row" id="moneyRow"></div>
+      </section>
+
+      <section class="panel action-panel" aria-labelledby="actionTitle">
+        <h2 id="actionTitle">行动</h2>
+        <p class="action-note" id="actionNote">请选择接下来做什么。</p>
+        <div class="action-grid">
+          <button type="button" data-action="eat">吃饭（10文）</button>
+          <button type="button" data-action="sleep">睡觉</button>
+          <button type="button" data-action="work">做工（4小时）</button>
+          <button type="button" data-action="wander">闲逛（1小时）</button>
+        </div>
+        <button type="button" id="restartButton" class="restart-button">重开</button>
+      </section>
+    </main>
+
+    <div class="death-overlay hidden" id="deathOverlay" role="dialog" aria-modal="true" aria-labelledby="deathTitle">
+      <div class="death-card">
+        <h2 id="deathTitle">身死临安</h2>
+        <p id="deathReason">你饿死了。</p>
+        <p id="survivalDays">存活 0 天</p>
+        <button type="button" id="deathRestartButton">重开</button>
+      </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
