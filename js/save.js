@@ -5,9 +5,15 @@ export function saveGame(state) {
     version: 1,
     clock: state.clock,
     player: state.player,
+    npcs: state.npcs,
+    world: state.world,
+    lastDailySettlement: state.lastDailySettlement,
     currentAction: state.currentAction,
     dead: state.dead,
     deathReason: state.deathReason,
+    storyLog: state.storyLog,
+    auditLog: state.auditLog,
+    storySettings: { mode: state.storySettings?.mode },
   };
   localStorage.setItem(SAVE_KEY, JSON.stringify(data));
 }
