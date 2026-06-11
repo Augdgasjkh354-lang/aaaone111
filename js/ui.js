@@ -323,7 +323,7 @@ function renderAuditLog(state) {
     ? entries.map((entry) => `
       <article class="audit-entry">
         <time>${escapeHtml(entry.timestamp)}</time>
-        <pre>原始：${escapeHtml(JSON.stringify(entry.raw))}\n生效：${escapeHtml(JSON.stringify(entry.applied))}</pre>
+        <pre>原始：${escapeHtml(JSON.stringify(entry.raw))}\n允许：${escapeHtml(JSON.stringify(entry.applied))}\n最终：${escapeHtml(JSON.stringify(entry.final_applied ?? entry.applied))}</pre>
       </article>
     `).join("")
     : `<p>暂无审计日志。</p>`;
