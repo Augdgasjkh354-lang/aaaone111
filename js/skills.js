@@ -72,13 +72,13 @@ export function canUnlockMentor(skill, npcs) {
 }
 
 export function gainSkill(player, skill, amount, dateKey) {
-  if (!SKILL_KEYS.includes(skill)) return false;
+  if (!SKILL_KEYS.includes(skill)) return 0;
   player.dailySkillGains = normalizeDailySkillGains(player.dailySkillGains);
   if (player.dailySkillGains.dateKey !== dateKey) {
     player.dailySkillGains = { dateKey, wen: 0, wu: 0, suan: 0, tan: 0 };
   }
   const cappedAmount = Math.min(1, Math.max(0, Number.parseInt(amount, 10) || 0));
-  if (cappedAmount <= 0 || player.dailySkillGains[skill] >= 3) return false;
+  if (cappedAmount <= 0 || player.dailySkillGains[skill] >= 3) return 0;
 
   const roomToday = 3 - player.dailySkillGains[skill];
   const gain = Math.min(cappedAmount, roomToday);
@@ -87,7 +87,7 @@ export function gainSkill(player, skill, amount, dateKey) {
   player.skills[skill] = Math.min(cap, before + gain);
   const actual = player.skills[skill] - before;
   player.dailySkillGains[skill] += actual;
-  return actual > 0;
+  return actual;
 }
 
 export function getStudyOptions(state) {

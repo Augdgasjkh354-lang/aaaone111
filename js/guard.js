@@ -39,8 +39,8 @@ export function auditAndApplyStoryChanges(
   const mentorUnlock = sanitizeMentorUnlock(rawMentorUnlock, state);
   const itemGrant = sanitizeItemGrant(rawItemGrant);
   const itemRemove = sanitizeItemRemove(rawItemRemove, state.player);
-  applyStateChanges(state.player, stateChanges);
-  appendAuditLog(
+  const finalStateChanges = applyStateChanges(state.player, stateChanges);
+  const auditEntry = appendAuditLog(
     state,
     {
       state_changes: rawStateChanges ?? {},
@@ -52,20 +52,33 @@ export function auditAndApplyStoryChanges(
       item_remove: rawItemRemove,
     },
     { state_changes: stateChanges, npc_updates: npcUpdates, debt_updates: debtUpdates, skill_gain: skillGain, mentor_unlock: mentorUnlock, item_grant: itemGrant, item_remove: itemRemove },
+    { state_changes: finalStateChanges, npc_updates: npcUpdates, debt_updates: debtUpdates, skill_gain: skillGain, mentor_unlock: mentorUnlock, item_grant: itemGrant, item_remove: itemRemove },
   );
-  return { stateChanges, npcUpdates, debtUpdates, skillGain, mentorUnlock, itemGrant, itemRemove };
+  return { stateChanges, finalStateChanges, npcUpdates, debtUpdates, skillGain, mentorUnlock, itemGrant, itemRemove, auditEntry };
 }
 
 export function auditAndApplyStateChanges(state, rawChanges = {}, scene = "") {
   const sanitizedChanges = sanitizeStateChanges(state.player, rawChanges, scene);
-  applyStateChanges(state.player, sanitizedChanges);
-  appendAuditLog(state, rawChanges, sanitizedChanges);
+  const finalChanges = applyStateChanges(state.player, sanitizedChanges);
+  appendAuditLog(state, rawChanges, sanitizedChanges, finalChanges);
   return sanitizedChanges;
 }
 
 export function getAuditLog(state) {
   if (Array.isArray(state?.auditLog)) return state.auditLog;
   return readAuditLog();
+}
+
+export function setAuditFinalApplied(state, entry, finalApplied) {
+  if (!entry) return;
+  entry.final_applied = finalApplied;
+  if (Array.isArray(state?.auditLog)) {
+    localStorage.setItem(AUDIT_LOG_KEY, JSON.stringify(state.auditLog));
+  }
+}
+
+export function clearAuditLog() {
+  localStorage.removeItem(AUDIT_LOG_KEY);
 }
 
 
@@ -218,47 +231,73 @@ function sanitizeDebtUpdates(rawDebtUpdates, presentNpcIds, npcs = []) {
 }
 
 function applyStateChanges(player, changes) {
+  const actual = {};
+
   if (Number.isFinite(changes.copper)) {
+    const before = player.coins;
     player.coins = Math.max(0, player.coins + changes.copper);
+    const delta = player.coins - before;
+    if (delta !== 0) actual.copper = delta;
   }
 
   if (Number.isFinite(changes.silver)) {
+    const before = player.silver;
     player.silver = Math.max(0, player.silver + changes.silver);
+    const delta = player.silver - before;
+    if (delta !== 0) actual.silver = delta;
   }
 
   if (Number.isFinite(changes.satiety)) {
+    const before = player.satiety;
     player.satiety = clamp(player.satiety + changes.satiety, 0, 100);
+    const delta = player.satiety - before;
+    if (delta !== 0) actual.satiety = delta;
   }
 
   if (Number.isFinite(changes.stamina)) {
+    const before = player.stamina;
     player.stamina = clamp(player.stamina + changes.stamina, 0, 100);
+    const delta = player.stamina - before;
+    if (delta !== 0) actual.stamina = delta;
   }
 
   if (Number.isFinite(changes.health)) {
+    const before = player.health;
     player.health = Math.max(1, clamp(player.health + changes.health, 0, 100));
+    const delta = player.health - before;
+    if (delta !== 0) actual.health = delta;
   }
 
   if (changes.injury_add) {
     player.injuries = Array.isArray(player.injuries) ? player.injuries : [];
-    if (!player.injuries.includes(changes.injury_add)) player.injuries.push(changes.injury_add);
+    if (!player.injuries.includes(changes.injury_add)) {
+      player.injuries.push(changes.injury_add);
+      actual.injury_add = changes.injury_add;
+    }
   }
 
   if (changes.injury_remove && Array.isArray(player.injuries)) {
+    const hadInjury = player.injuries.includes(changes.injury_remove);
     player.injuries = player.injuries.filter((injury) => injury !== changes.injury_remove);
+    if (hadInjury) actual.injury_remove = changes.injury_remove;
   }
+
+  return actual;
 }
 
-function appendAuditLog(state, rawChanges, appliedChanges) {
+function appendAuditLog(state, rawChanges, appliedChanges, finalApplied = null) {
   const entry = {
     timestamp: new Date().toISOString(),
     raw: rawChanges ?? {},
     applied: appliedChanges,
+    final_applied: finalApplied ?? appliedChanges,
   };
   const sourceLog = Array.isArray(state.auditLog) ? state.auditLog : readAuditLog();
   sourceLog.push(entry);
   while (sourceLog.length > AUDIT_LOG_LIMIT) sourceLog.shift();
   state.auditLog = sourceLog;
   localStorage.setItem(AUDIT_LOG_KEY, JSON.stringify(sourceLog));
+  return entry;
 }
 
 function readAuditLog() {

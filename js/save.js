@@ -1,3 +1,5 @@
+import { clearAuditLog } from "./guard.js";
+
 const SAVE_KEY = "linan-survival-v0-1";
 
 export function saveGame(state) {
@@ -33,4 +35,5 @@ export function loadGame() {
 
 export function clearSave() {
   localStorage.removeItem(SAVE_KEY);
+  clearAuditLog();
 }

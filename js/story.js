@@ -2,13 +2,13 @@ import { callDeepSeek } from "./api.js";
 import { getDateParts, getMinuteOfDay, getPeriod } from "./clock.js";
 import { describeHealth, describeSatiety, describeStamina, getCurrentAge } from "./player.js";
 import { getLocation } from "./world.js";
-import { auditAndApplyStoryChanges } from "./guard.js";
+import { auditAndApplyStoryChanges, setAuditFinalApplied } from "./guard.js";
 import { getRecentMemories, rememberStory } from "./memory.js";
 import { applyDebtUpdates, applyNpcUpdates, getPlayerDebtLines, getPresentNpcs, isNpcKnown } from "./npcs.js";
 import { PRICE_ANCHORS } from "./economy.js";
 import { describeIllnesses } from "./illness.js";
 import { getRumors } from "./worldtick.js";
-import { grantNarrativeItem, removeNarrativeItem } from "./items.js";
+import { grantNarrativeItem, hasItem, removeNarrativeItem } from "./items.js";
 import { gainSkill, getSkillSummary } from "./skills.js";
 import { getClimateText } from "./season.js";
 
@@ -82,11 +82,25 @@ export async function runStoryAction(state, actionText, apiKey, mode, extraConte
     result.item_remove ?? "",
   );
   applyDebtUpdates(state.npcs, applied.debtUpdates, formatClockForDebt(state.clock));
-  if (applied.mentorUnlock) state.player.mentorUnlocks[applied.mentorUnlock] = true;
-  if (applied.skillGain) gainSkill(state.player, applied.skillGain.skill, applied.skillGain.amount, context.dateKey);
-  if (applied.itemGrant) grantNarrativeItem(state.player, applied.itemGrant);
-  if (applied.itemRemove) removeNarrativeItem(state.player, applied.itemRemove);
+  const alreadyHadMentor = applied.mentorUnlock ? Boolean(state.player.mentorUnlocks[applied.mentorUnlock]) : false;
+  const mentorUnlocked = Boolean(applied.mentorUnlock);
+  if (mentorUnlocked) state.player.mentorUnlocks[applied.mentorUnlock] = true;
+  const actualSkillGain = applied.skillGain
+    ? gainSkill(state.player, applied.skillGain.skill, applied.skillGain.amount, context.dateKey)
+    : 0;
+  const alreadyHadItem = applied.itemGrant ? hasItem(state.player, applied.itemGrant.name) : false;
+  const grantedItem = applied.itemGrant ? grantNarrativeItem(state.player, applied.itemGrant) : null;
+  const removedItem = applied.itemRemove ? removeNarrativeItem(state.player, applied.itemRemove) : false;
   await applyNpcUpdates(state.npcs, applied.npcUpdates, state.clock, apiKey);
+  setAuditFinalApplied(state, applied.auditEntry, {
+    state_changes: applied.finalStateChanges,
+    npc_updates: applied.npcUpdates,
+    debt_updates: applied.debtUpdates,
+    skill_gain: actualSkillGain > 0 ? { skill: applied.skillGain.skill, amount: actualSkillGain } : null,
+    mentor_unlock: mentorUnlocked && !alreadyHadMentor ? applied.mentorUnlock : "",
+    item_grant: grantedItem && !alreadyHadItem ? applied.itemGrant : null,
+    item_remove: removedItem ? applied.itemRemove : "",
+  });
   await rememberStory(state.player, state.clock, result.memory || scene.slice(0, 60), apiKey);
 
   return {
