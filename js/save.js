@@ -1,4 +1,5 @@
 import { clearAuditLog } from "./guard.js";
+import { clearTianjiStorage } from "./tianji.js";
 
 const SAVE_KEY = "linan-survival-v0-1";
 
@@ -36,4 +37,5 @@ export function loadGame() {
 export function clearSave() {
   localStorage.removeItem(SAVE_KEY);
   clearAuditLog();
+  clearTianjiStorage();
 }

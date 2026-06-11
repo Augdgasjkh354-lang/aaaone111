@@ -6,6 +6,10 @@ import { normalizeScholarState } from "./scholar.js";
 import { createLuck } from "./luck.js";
 import { normalizeScamState } from "./scam.js";
 import { normalizeLabor } from "./labor.js";
+import { normalizeJusticeState } from "./justice.js";
+import { normalizeRoutineState } from "./routine.js";
+import { normalizeBusinessState } from "./business.js";
+import { normalizeTianjiState } from "./tianji.js";
 import { START_LOCATION_ID, getLocation } from "./world.js";
 
 export function createPlayer(savedPlayer = {}) {
@@ -31,6 +35,10 @@ export function createPlayer(savedPlayer = {}) {
     gambling: normalizeGambling(savedPlayer.gambling),
     begging: normalizeBegging(savedPlayer.begging),
     labor: normalizeLabor(savedPlayer.labor),
+    justice: normalizeJusticeState(savedPlayer.justice),
+    routine: normalizeRoutineState(savedPlayer.routine),
+    business: normalizeBusinessState(savedPlayer.business),
+    tianji: normalizeTianjiState(savedPlayer.tianji),
     officialRisk: Number.isFinite(savedPlayer.officialRisk) ? savedPlayer.officialRisk : 0,
     skills: normalizeSkills(savedPlayer.skills),
     mentorUnlocks: normalizeMentors(savedPlayer.mentorUnlocks),

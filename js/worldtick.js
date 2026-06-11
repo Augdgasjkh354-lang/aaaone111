@@ -1,5 +1,6 @@
 import { chance } from "./luck.js";
 import { normalizeNeighborState } from "./neighborchain.js";
+import { applyCrowdingEvent, monthlyRivalTick, normalizeRivals } from "./rivals.js";
 
 export const RICE_BASE_DOU_PRICE = 80;
 
@@ -27,6 +28,7 @@ export function createWorldState(saved = {}) {
     lastEventCheckKey: typeof saved.lastEventCheckKey === "string" ? saved.lastEventCheckKey : "",
     neighborChains: normalizeNeighborState(saved.neighborChains),
     dockWageDelayDays: Number.isFinite(saved.dockWageDelayDays) ? saved.dockWageDelayDays : 0,
+    rivals: normalizeRivals(saved.rivals),
   };
 }
 
@@ -36,8 +38,10 @@ export function dailyWorldTick(world, dateParts, season) {
   const monthKey = `${dateParts.year}-${dateParts.month}`;
   if (dateParts.day === 1 && world.lastRiceMonthKey !== monthKey) {
     world.riceIndex = Math.max(60, Math.min(160, world.riceIndex + randomInt(-8, 8) + getSeasonRiceModifier(dateParts.month) + getHooks(world).riceDelta));
+    if (world.riceIndex > 115) applyCrowdingEvent(world, "cooked_cake", 10);
     world.lastRiceMonthKey = monthKey;
   }
+  monthlyRivalTick(world, dateParts).forEach((text) => world.activeEvents.push({ id: `rival_${Date.now()}_${Math.random()}`, name: "同行爆雷", text, remainingDays: 7 }));
 
   const eventKey = `${monthKey}-${dateParts.day}`;
   if ([1, 15].includes(dateParts.day) && world.lastEventCheckKey !== eventKey) {

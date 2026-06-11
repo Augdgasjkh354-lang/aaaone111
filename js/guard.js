@@ -12,6 +12,19 @@ const ALLOWED_FIELDS = new Set([
 const NPC_RELATION_FIELDS = ["favor", "trust", "doubt"];
 const SKILL_KEYS = ["wen", "wu", "suan", "tan"];
 
+
+const CRIME_TYPES = ["窃盗", "抢夺", "斗殴伤人", "欺诈", "杀人", "纵火", "销赃"];
+
+export function sanitizeCrimeReport(rawReport, presentNpcIds = []) {
+  if (!rawReport || typeof rawReport !== "object") return null;
+  const type = CRIME_TYPES.includes(rawReport.type) ? rawReport.type : "窃盗";
+  const severity = clamp(Number.parseInt(rawReport.severity, 10) || 1, 1, 5);
+  const present = new Set(presentNpcIds);
+  const witnesses = Array.isArray(rawReport.witnesses) ? rawReport.witnesses.filter((id) => present.has(id)).slice(0, 5) : [];
+  const anonymousWitnesses = clamp(Number.parseInt(rawReport.anonymous_witnesses, 10) || 0, 0, 3);
+  return { type, severity, witnesses, anonymousWitnesses };
+}
+
 const LIMITS = {
   copper: { min: -100, max: 100 },
   silver: { min: -2, max: 2 },
