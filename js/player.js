@@ -1,4 +1,11 @@
+import { normalizeIllnesses } from "./illness.js";
+import { normalizeClothing, normalizeInventory } from "./items.js";
+import { normalizeDailySkillGains, normalizeMentors, normalizeSkills } from "./skills.js";
+import { START_LOCATION_ID, getLocation } from "./world.js";
+
 export function createPlayer(savedPlayer = {}) {
+  const savedLocation = typeof savedPlayer.location === "string" ? savedPlayer.location : START_LOCATION_ID;
+
   return {
     coins: Number.isFinite(savedPlayer.coins) ? savedPlayer.coins : 80,
     silver: Number.isFinite(savedPlayer.silver) ? savedPlayer.silver : 0,
@@ -7,6 +14,25 @@ export function createPlayer(savedPlayer = {}) {
     stamina: clampStat(savedPlayer.stamina ?? 100),
     satiety: clampStat(savedPlayer.satiety ?? 75),
     baseAge: Number.isFinite(savedPlayer.baseAge) ? savedPlayer.baseAge : 20,
+    location: getLocation(savedLocation).id,
+    injuries: Array.isArray(savedPlayer.injuries) ? savedPlayer.injuries.filter((injury) => typeof injury === "string" && injury !== "风寒") : [],
+    memories: Array.isArray(savedPlayer.memories) ? savedPlayer.memories : [],
+    skills: normalizeSkills(savedPlayer.skills),
+    mentorUnlocks: normalizeMentors(savedPlayer.mentorUnlocks),
+    dailySkillGains: normalizeDailySkillGains(savedPlayer.dailySkillGains),
+    inventory: normalizeInventory(savedPlayer.inventory),
+    clothing: normalizeClothing(savedPlayer.clothing),
+    cleanliness: clampStat(savedPlayer.cleanliness ?? 50),
+    lastCleanlinessDay: typeof savedPlayer.lastCleanlinessDay === "string" ? savedPlayer.lastCleanlinessDay : "",
+    lastWindColdDay: typeof savedPlayer.lastWindColdDay === "string" ? savedPlayer.lastWindColdDay : "",
+    illnesses: normalizeIllnesses(savedPlayer.illnesses, savedPlayer.injuries),
+    lowSatietyDays: Number.isFinite(savedPlayer.lowSatietyDays) ? savedPlayer.lowSatietyDays : 0,
+    dailyOutdoorWork: Boolean(savedPlayer.dailyOutdoorWork),
+    housing: normalizeHousing(savedPlayer.housing),
+    unlockedHousing: normalizeUnlockedHousing(savedPlayer.unlockedHousing),
+    beggingStreak: Number.isFinite(savedPlayer.beggingStreak) ? savedPlayer.beggingStreak : 0,
+    reputationMark: typeof savedPlayer.reputationMark === "string" ? savedPlayer.reputationMark : "",
+    lastRentMonthKey: typeof savedPlayer.lastRentMonthKey === "string" ? savedPlayer.lastRentMonthKey : "",
   };
 }
 
@@ -69,4 +95,15 @@ export function describeStamina(value) {
   if (value >= 40) return "略有倦意";
   if (value >= 15) return "步履沉重";
   return "几近力竭";
+}
+
+function normalizeHousing(housing) {
+  return ["露宿", "破庙", "租屋"].includes(housing) ? housing : "露宿";
+}
+
+function normalizeUnlockedHousing(unlockedHousing = {}) {
+  return {
+    temple: Boolean(unlockedHousing.temple),
+    rented: Boolean(unlockedHousing.rented),
+  };
 }

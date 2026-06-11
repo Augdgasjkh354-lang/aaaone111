@@ -23,6 +23,7 @@
             <option value="4">五档</option>
           </select>
           <button type="button" id="pauseButton" class="small-button">暂停</button>
+          <button type="button" id="settingsButton" class="gear-button" aria-label="设置">⚙</button>
         </div>
       </header>
 
@@ -30,6 +31,11 @@
         <h1 id="statusTitle">临安求生</h1>
         <p class="flavor">南宋临安，晨雾未散。你只是城中一介普通人，先要活过今日。</p>
         <div class="status-grid" id="statusGrid"></div>
+      </section>
+
+      <section class="panel narrative-panel" aria-labelledby="narrativeTitle">
+        <h2 id="narrativeTitle">叙事</h2>
+        <div class="story-log" id="storyLog" aria-live="polite"></div>
       </section>
 
       <section class="panel money-panel" aria-labelledby="moneyTitle">
@@ -40,15 +46,59 @@
       <section class="panel action-panel" aria-labelledby="actionTitle">
         <h2 id="actionTitle">行动</h2>
         <p class="action-note" id="actionNote">请选择接下来做什么。</p>
+        <div class="travel-panel">
+          <button type="button" id="travelToggleButton" class="travel-toggle">出行</button>
+          <div class="travel-list hidden" id="travelList" aria-live="polite"></div>
+          <button type="button" id="cancelTravelButton" class="cancel-travel hidden">取消赶路</button>
+        </div>
         <div class="action-grid">
           <button type="button" data-action="eat">吃饭（10文）</button>
           <button type="button" data-action="sleep">睡觉</button>
-          <button type="button" data-action="work">做工（4小时）</button>
-          <button type="button" data-action="wander">闲逛（1小时）</button>
+          <button type="button" data-action="work">活计</button>
+          <button type="button" id="studyToggleButton">修习</button>
+          <button type="button" id="purchaseToggleButton">购置</button>
+          <button type="button" id="repairToggleButton">修整</button>
+          <button type="button" id="inventoryButton">背包</button>
         </div>
+        <div class="work-list hidden" id="workList" aria-live="polite"></div>
+        <div class="work-list hidden" id="studyList" aria-live="polite"></div>
+        <div class="work-list hidden" id="purchaseList" aria-live="polite"></div>
+        <div class="work-list hidden" id="repairList" aria-live="polite"></div>
+        <div class="work-list hidden" id="inventoryList" aria-live="polite"></div>
+        <form class="free-action-form" id="freeActionForm">
+          <label for="freeActionInput">自由行动</label>
+          <textarea id="freeActionInput" rows="3" placeholder="例如：我去米市看看粮价"></textarea>
+          <button type="submit" id="freeActionButton">行动</button>
+        </form>
         <button type="button" id="restartButton" class="restart-button">重开</button>
       </section>
     </main>
+
+    <div class="settings-overlay hidden" id="settingsOverlay" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="settings-card">
+        <h2 id="settingsTitle">设置</h2>
+        <label for="apiKeyInput">DeepSeek API Key</label>
+        <input type="password" id="apiKeyInput" autocomplete="off" />
+        <label for="thinkingModeSelect">思考模式</label>
+        <select id="thinkingModeSelect">
+          <option value="disabled">无思考</option>
+          <option value="high">思考</option>
+          <option value="max">最大思考</option>
+        </select>
+        <label for="housingSelect">住所</label>
+        <select id="housingSelect">
+          <option value="露宿">露宿</option>
+          <option value="破庙">破庙</option>
+          <option value="租屋">租屋</option>
+        </select>
+        <div class="settings-actions">
+          <button type="button" id="saveSettingsButton">保存</button>
+          <button type="button" id="viewAuditLogButton">查看日志</button>
+          <button type="button" id="closeSettingsButton">关闭</button>
+        </div>
+        <div class="audit-log hidden" id="auditLog"></div>
+      </div>
+    </div>
 
     <div class="death-overlay hidden" id="deathOverlay" role="dialog" aria-modal="true" aria-labelledby="deathTitle">
       <div class="death-card">
