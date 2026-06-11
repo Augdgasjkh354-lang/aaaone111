@@ -5,10 +5,12 @@ export const CATALOG_ITEMS = [
   { id: "decent_clothes", name: "体面旧衣", location: "qinghefang", vendor: "估衣铺", price: 800, type: "clothing", clothing: "体面" },
   { id: "winter_clothes", name: "冬衣", location: "qinghefang", vendor: "估衣铺", price: 300, type: "catalog", desc: "御寒衣物" },
   { id: "old_book", name: "旧书", location: "qinghefang", vendor: "估衣铺", price: 100, type: "catalog", desc: "破旧书册" },
+  { id: "classic_book", name: "经书", location: "academy", vendor: "书院斋舍", price: 800, type: "catalog", desc: "书院购得的经义课本" },
   { id: "raincoat", name: "蓑衣", location: "rice_market", vendor: "杂货", price: 50, type: "catalog", desc: "挡雨蓑衣" },
   { id: "pole_rope", name: "扁担麻绳", location: "rice_market", vendor: "杂货", price: 30, type: "catalog", desc: "扛包省力，码头工钱略增" },
   { id: "lantern", name: "灯笼", location: "rice_market", vendor: "杂货", price: 40, type: "catalog", desc: "夜路照明" },
   { id: "medicine", name: "伤药", location: "qinghefang", vendor: "药铺", price: 100, type: "medicine", desc: "可移除风寒或一项轻伤" },
+  { id: "coal_basket", name: "一篮炭", location: "rice_market", vendor: "杂货", price: 30, type: "catalog", desc: "过冬取暖的炭" },
 ];
 
 export function normalizeInventory(inventory = []) {

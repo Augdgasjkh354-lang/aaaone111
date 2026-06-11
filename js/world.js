@@ -8,6 +8,7 @@ export const LOCATIONS = [
     description: "城南偏僻巷陌里屋檐低矮，主角暂且在此栖身。",
     neighbors: [
       { id: "south_homes", minutes: 10 },
+      { id: "academy", minutes: 20 },
       { id: "city_god_temple", minutes: 20 },
       { id: "rice_market", minutes: 30 },
     ],
@@ -81,7 +82,17 @@ export const LOCATIONS = [
     neighbors: [
       { id: "slum_alley", minutes: 10 },
       { id: "city_god_temple", minutes: 15 },
+      { id: "academy", minutes: 15 },
       { id: "dock", minutes: 30 },
+    ],
+  },
+  {
+    id: "academy",
+    name: "书院",
+    description: "城南僻静处的书院，讲堂窗明，廊下常有寒素学子捧卷。",
+    neighbors: [
+      { id: "south_homes", minutes: 15 },
+      { id: "slum_alley", minutes: 20 },
     ],
   },
 ];

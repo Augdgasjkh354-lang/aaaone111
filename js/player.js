@@ -1,6 +1,11 @@
 import { normalizeIllnesses } from "./illness.js";
 import { normalizeClothing, normalizeInventory } from "./items.js";
-import { normalizeDailySkillGains, normalizeMentors, normalizeSkills } from "./skills.js";
+import { normalizeDailySkillGains, normalizeMentors, normalizeSkillProgress, normalizeSkills } from "./skills.js";
+import { normalizeIdentity, normalizeIdentityState } from "./identity.js";
+import { normalizeScholarState } from "./scholar.js";
+import { createLuck } from "./luck.js";
+import { normalizeScamState } from "./scam.js";
+import { normalizeLabor } from "./labor.js";
 import { START_LOCATION_ID, getLocation } from "./world.js";
 
 export function createPlayer(savedPlayer = {}) {
@@ -17,9 +22,20 @@ export function createPlayer(savedPlayer = {}) {
     location: getLocation(savedLocation).id,
     injuries: Array.isArray(savedPlayer.injuries) ? savedPlayer.injuries.filter((injury) => typeof injury === "string" && injury !== "风寒") : [],
     memories: Array.isArray(savedPlayer.memories) ? savedPlayer.memories : [],
+    identity: normalizeIdentity(savedPlayer.identity),
+    identityState: normalizeIdentityState(savedPlayer.identityState),
+    scholar: normalizeScholarState(savedPlayer.scholar),
+    reputation: Number.isFinite(savedPlayer.reputation) ? savedPlayer.reputation : 0,
+    luck: createLuck(savedPlayer.luck),
+    scams: normalizeScamState(savedPlayer.scams),
+    gambling: normalizeGambling(savedPlayer.gambling),
+    begging: normalizeBegging(savedPlayer.begging),
+    labor: normalizeLabor(savedPlayer.labor),
+    officialRisk: Number.isFinite(savedPlayer.officialRisk) ? savedPlayer.officialRisk : 0,
     skills: normalizeSkills(savedPlayer.skills),
     mentorUnlocks: normalizeMentors(savedPlayer.mentorUnlocks),
     dailySkillGains: normalizeDailySkillGains(savedPlayer.dailySkillGains),
+    skillProgress: normalizeSkillProgress(savedPlayer.skillProgress),
     inventory: normalizeInventory(savedPlayer.inventory),
     clothing: normalizeClothing(savedPlayer.clothing),
     cleanliness: clampStat(savedPlayer.cleanliness ?? 50),
@@ -105,5 +121,23 @@ function normalizeUnlockedHousing(unlockedHousing = {}) {
   return {
     temple: Boolean(unlockedHousing.temple),
     rented: Boolean(unlockedHousing.rented),
+  };
+}
+
+function normalizeGambling(saved = {}) {
+  return {
+    lossStreak: Number.isFinite(saved.lossStreak) ? Math.max(0, Math.floor(saved.lossStreak)) : 0,
+    lostToday: Number.isFinite(saved.lostToday) ? Math.max(0, Math.floor(saved.lostToday)) : 0,
+    lastDateKey: typeof saved.lastDateKey === "string" ? saved.lastDateKey : "",
+    redEyeUntil: typeof saved.redEyeUntil === "string" ? saved.redEyeUntil : "",
+  };
+}
+
+function normalizeBegging(saved = {}) {
+  return {
+    territoryCount: Number.isFinite(saved.territoryCount) ? Math.max(0, Math.floor(saved.territoryCount)) : 0,
+    qianContacted: Boolean(saved.qianContacted),
+    mode: ["none", "pay", "resist", "join"].includes(saved.mode) ? saved.mode : "none",
+    qianNarrated: Boolean(saved.qianNarrated),
   };
 }

@@ -10,7 +10,15 @@ import { institutions } from "./economy.js";
 import { purchaseItem } from "./items.js";
 import { gainSkill, getStudyOptions } from "./skills.js";
 import { getColdSleepHealthPenalty, getRiverBathColdChance, getSeasonByMonth, isColdMonth } from "./season.js";
+import { chance } from "./luck.js";
+import { getDivinationText } from "./luck.js";
+import { dailyFestivalTick, isFestivalGamblingLegal } from "./festival.js";
+import { maybeTriggerScam } from "./scam.js";
+import { addLaborToll, applyMassage, dailyLaborSettlement, getLaborStaminaCapPenalty } from "./labor.js";
+import { applyNeighborIntervention, dailyNeighborChainTick, noteLocationVisit, runNeighborNarrative } from "./neighborchain.js";
 import { applyRicePressure, createWorldState, dailyWorldTick, getHooks } from "./worldtick.js";
+import { canApplyHouseholdRegistration, runIdentityMoment, startHouseholdRegistration, tickHouseholdRegistration } from "./identity.js";
+import { getWenStudyMultiplier, monthlyScholarSettlement, tryHandleScholarFreeAction } from "./scholar.js";
 import { bindControls, render } from "./ui.js";
 import { clearSave, loadGame, saveGame } from "./save.js";
 
@@ -45,6 +53,7 @@ bindControls({
   onCloseSettings: closeSettings,
   onSaveSettings: saveSettings,
   onViewAuditLog: toggleAuditLog,
+  onViewNeighborStatus: toggleNeighborStatus,
   onToggleWork: toggleWorkList,
   onWork: startWork,
   onHousingChange: changeHousing,
@@ -54,6 +63,7 @@ bindControls({
   onPurchase: buyItem,
   onToggleRepair: toggleRepairList,
   onRepair: startRepair,
+  onHouseholdRegistration: handleHouseholdRegistration,
 });
 
 ensureApiKeyOnFirstEnter();
@@ -76,11 +86,13 @@ function createInitialState() {
     studyOpen: false,
     purchaseOpen: false,
     repairOpen: false,
+    pendingIdentityMoments: [],
     storyLoading: false,
     storyLog: Array.isArray(saved?.storyLog) ? saved.storyLog : [],
     auditLog: Array.isArray(saved?.auditLog) ? saved.auditLog : [],
     settingsOpen: false,
     showAuditLog: false,
+    showNeighborStatus: false,
     storySettings: loadStorySettings(saved?.storySettings),
     lastDailySettlement: saved?.lastDailySettlement ?? "",
   };
@@ -148,6 +160,24 @@ async function startFreeAction(actionText) {
   render(state);
 
   try {
+    const begResult = handleBeggingChoice(text);
+    if (begResult?.handled) {
+      state.message = begResult.message;
+      saveGame(state);
+      return;
+    }
+    const neighborResult = handleNeighborIntervention(text);
+    if (neighborResult?.handled) {
+      state.message = neighborResult.message;
+      saveGame(state);
+      return;
+    }
+    const scholarResult = await tryHandleScholarFreeAction(state, text, state.storySettings.apiKey, state.storySettings.mode, createScholarHelpers(wasPaused));
+    if (scholarResult?.handled) {
+      state.message = scholarResult.message;
+      saveGame(state);
+      return;
+    }
     const result = await runStoryAction(state, text, state.storySettings.apiKey, state.storySettings.mode);
     appendStory(result.scene);
     if (!result.rejected) {
@@ -155,6 +185,7 @@ async function startFreeAction(actionText) {
       handleHousingDiscovery(text);
       handleRentIntent(text);
       state.message = `此事耗时约 ${result.durationMinutes} 分钟。`;
+      await triggerScamIfAny({ tag: "free_action" });
     } else {
       state.message = "此事未曾发生。";
     }
@@ -189,7 +220,7 @@ function sleepToMorning() {
   runDailySettlementsSince(previousDateParts);
   applyMetabolism(state.player, sleptMinutes, { sleeping: true });
   const capRatio = getHousingStaminaCapRatio();
-  state.player.stamina = Math.min(getStaminaMax(state.player) * capRatio * getIllnessStaminaCapMultiplier(state.player), state.player.stamina);
+  state.player.stamina = Math.min((getStaminaMax(state.player) - getLaborStaminaCapPenalty(state.player, getDateKey())) * capRatio * getIllnessStaminaCapMultiplier(state.player), state.player.stamina);
   state.message = resolveHousingSleepMessage();
   checkDeath();
 }
@@ -293,13 +324,20 @@ function buyItem(itemId) {
 
 function startRepair(repairId) {
   if (state.dead || state.currentAction || state.storyLoading) return;
-  if (repairId === "river_bath") {
+  if (String(repairId).startsWith("gamble_")) return startGambling(Number(String(repairId).split("_")[1]));
+  if (repairId === "divination") {
+    if (state.player.location !== "city_god_temple") { state.message = "卦肆在城隍庙。"; render(state); return; }
+    if (!spendCoins(state.player, 10)) { state.message = "卦资10文，钱不够。"; render(state); return; }
+    state.currentAction = { type: "repair", label: "卦肆问卜", repairId, remainingMinutes: 60 };
+  } else if (repairId === "river_bath") {
     if (!["dock"].includes(state.player.location)) {
       state.message = "此处不便去河边洗澡。";
       render(state);
       return;
     }
     state.currentAction = { type: "repair", label: "河边洗澡", repairId, remainingMinutes: 120 };
+  } else if (repairId === "massage") {
+    return seekMassage();
   } else if (repairId === "doctor") {
     return seekDoctor();
   } else if (repairId === "bathhouse") {
@@ -445,13 +483,17 @@ function advanceUtilityAction(gameMinutes) {
   state.currentAction = null;
   if (action.type === "study") {
     const dateKey = getDateKey();
-    gainSkill(state.player, action.skill, 1, dateKey);
+    gainSkill(state.player, action.skill, 1, dateKey, { multiplier: action.skill === "wen" ? getWenStudyMultiplier(state.player) : 1 });
     state.message = `${action.label}完毕，略有长进。`;
     appendStory(state.message);
   } else if (action.repairId === "river_bath") {
     state.player.cleanliness = 85;
     state.message = "在河边洗净尘垢。";
     maybeCatchWindCold();
+  } else if (action.repairId === "divination") {
+    state.message = getDivinationText(state.player);
+    appendStory(`卦肆批语：${state.message}`);
+    triggerScamIfAny({ tag: "divination" });
   } else if (action.repairId === "bathhouse") {
     state.player.cleanliness = 100;
     state.message = "在浴堂洗浴一番，周身清爽。";
@@ -470,11 +512,18 @@ function advanceLivelihood(gameMinutes) {
 
 async function finishWorkAction(action) {
   const result = settleWork(state, action.workId);
+  applyWorkLabor(action.workId);
   state.message = result.message;
   appendStory(result.message);
   saveGame(state);
 
-  const shouldTriggerEvent = result.forceTrouble || Math.random() < result.eventChance;
+  if (result.qianContact) {
+    await narrateQianContact();
+  }
+  await triggerScamIfAny({ tag: action.workId });
+
+  const tag = result.forceTrouble ? "bad_work_trouble" : result.goodEventChance ? "good_work_event" : "bad_work_event";
+  const shouldTriggerEvent = result.forceTrouble || chance(result.goodEventChance ?? result.eventChance, tag, state.player);
   if (!shouldTriggerEvent || !ensureApiKeyOnFirstEnter()) {
     render(state);
     return;
@@ -553,6 +602,13 @@ function saveSettings(settings) {
 
 function toggleAuditLog() {
   state.showAuditLog = !state.showAuditLog;
+  state.showNeighborStatus = false;
+  render(state);
+}
+
+function toggleNeighborStatus() {
+  state.showNeighborStatus = !state.showNeighborStatus;
+  state.showAuditLog = false;
   render(state);
 }
 
@@ -594,8 +650,13 @@ function runDailySettlementFor(dateParts) {
   state.lastDailySettlement = dateKey;
 
   const season = getSeasonByMonth(dateParts.month);
+  noteLocationVisit(state, dateParts);
   dailyWorldTick(state.world, dateParts, season);
+  dailyFestivalTick(state.world, dateParts);
+  resetDailyGambling(dateKey);
   applyRicePressure(state.npcs, state.world.riceIndex);
+  state.npcs.forEach((npc) => { if ((npc.workPausedUntil ?? 0) > 0) npc.workPausedUntil -= 1; });
+  dailyNeighborChainTick(state, dateParts);
   handleDailyCleanliness(dateKey);
   noteLowSatiety(state.player);
   dailyIllnessSettlement(state.player, {
@@ -603,7 +664,15 @@ function runDailySettlementFor(dateParts) {
     hasWinterClothes: hasInventoryItem("冬衣"),
     illnessMultiplier: getHooks(state.world).illnessMultiplier,
   });
+  dailyLaborSettlement(state.player, dateKey, Boolean(state.player.didHeavyWorkToday), { cold: isColdMonth(dateParts.month) });
+  state.player.didHeavyWorkToday = false;
   handleMonthlyRent(dateParts);
+  flushNeighborNarratives();
+  const registrationTransition = tickHouseholdRegistration(state);
+  if (registrationTransition) queueIdentityMoment(registrationTransition);
+  const scholarTransition = monthlyScholarSettlement(state, dateParts);
+  if (scholarTransition) queueIdentityMoment(scholarTransition);
+  flushIdentityMoments();
 }
 
 function datePartsToOrdinal({ year, month, day }) {
@@ -646,9 +715,9 @@ function resolveHousingSleepMessage() {
   if (state.player.housing === "租屋") return "在租屋里睡醒，精神复原。";
 
   const risk = state.player.housing === "破庙" ? 0.03 : 0.08;
-  if (Math.random() >= risk) return state.player.housing === "破庙" ? "在破庙里歇了一夜，天明醒来。" : "露宿一夜，勉强睡到天亮。";
+  if (!chance(risk, "bad_housing_event", state.player)) return state.player.housing === "破庙" ? "在破庙里歇了一夜，天明醒来。" : "露宿一夜，勉强睡到天亮。";
 
-  if (Math.random() < 0.5) {
+  if (chance(0.5, "bad_housing_health", state.player)) {
     changeHealth(state.player, -5);
     return "夜里受了寒，醒来身子更差。";
   }
@@ -660,7 +729,7 @@ function resolveHousingSleepMessage() {
 
 function maybeCatchWindCold() {
   const { month } = getDateParts(state.clock);
-  if (Math.random() < getRiverBathColdChance(month) && !state.player.injuries.includes("风寒")) {
+  if (chance(getRiverBathColdChance(month), "bad_illness", state.player) && !state.player.injuries.includes("风寒")) {
     state.player.injuries.push("风寒");
     state.message += " 河风一激，染上风寒。";
   }
@@ -712,9 +781,10 @@ function changeHousing(housing) {
 
 function attemptRentHousing() {
   if (state.player.housing === "租屋") return true;
-  const cost = 650;
+  const baseCost = 650;
+  const cost = state.player.begging?.mode === "join" ? baseCost + 300 : baseCost;
   if (!spendCoins(state.player, cost)) {
-    state.message = "租屋需押金200文并先付月租450文，钱还不够。";
+    state.message = state.player.begging?.mode === "join" ? "丐籍之人办住处打点更重，租屋合需950文，钱还不够。" : "租屋需押金200文并先付月租450文，钱还不够。";
     return false;
   }
   state.player.housing = "租屋";
@@ -747,6 +817,212 @@ function getRentMonthKey(dateParts = getDateParts(state.clock)) {
   return `${year}-${month}`;
 }
 
+
+
+
+function handleNeighborIntervention(text) {
+  if (/(周大娘|丈夫|安郎中).*(400|四百|请医|看病)/.test(text)) return applyNeighborIntervention(state, "zhou_husband", 400);
+  if (/(翠儿|药钱).*(200|二百|垫付)/.test(text)) return applyNeighborIntervention(state, "cuier_medicine", 200);
+  if (/(翠儿|刘麻子|印子钱).*(350|三百五十|代偿)/.test(text)) return applyNeighborIntervention(state, "cuier_medicine", 350);
+  if (/(老何).*(炭|冬衣|求医)/.test(text)) return applyNeighborIntervention(state, "old_he_winter", 30);
+  if (/(陈四|讨薪|船行)/.test(text)) return applyNeighborIntervention(state, "chen_wages", 0);
+  if (/(周大娘|摊位|小叔子|撑场)/.test(text)) return applyNeighborIntervention(state, "zhou_echo", 0);
+  return null;
+}
+
+function applyWorkLabor(workId) {
+  const toll = { dock_porter: 2, scavenge: 0.5, festival_oddjob: 1.5, yamen_duty: 0.3 }[workId] ?? 0;
+  if (toll <= 0) return;
+  addLaborToll(state.player, toll);
+  if (["dock_porter", "festival_oddjob"].includes(workId)) state.player.didHeavyWorkToday = true;
+}
+
+async function flushNeighborNarratives() {
+  const queue = state.world.neighborChains?.pendingNarratives;
+  if (!Array.isArray(queue) || queue.length === 0 || state.storyLoading || !state.storySettings.apiKey) return;
+  const item = queue.shift();
+  const wasPaused = state.clock.paused;
+  state.storyLoading = true;
+  state.clock.paused = true;
+  render(state);
+  try {
+    const scene = await runNeighborNarrative(state, state.storySettings.apiKey, state.storySettings.mode, item);
+    appendStory(scene);
+    state.message = item.title;
+  } catch (error) {
+    state.message = `街坊关键节点叙事失败：${error.message}`;
+  } finally {
+    state.storyLoading = false;
+    state.clock.paused = state.dead ? true : wasPaused;
+    saveGame(state);
+    render(state);
+  }
+}
+
+function seekMassage() {
+  const present = getNpcsAtLocation(state.npcs, state.player.location, getPeriod(getMinuteOfDay(state.clock)));
+  if (!present.some((npc) => npc.id === "an_langzhong")) { state.message = "安郎中不在此处。"; render(state); return; }
+  if (!spendCoins(state.player, 150)) { state.message = "推拿将养需150文。"; render(state); return; }
+  const parts = getDateParts(state.clock);
+  const until = dateKeyFromParts(ordinalToDateParts(datePartsToOrdinal(parts) + 30));
+  applyMassage(state.player, until);
+  state.message = "安郎中推拿后说只是压住旧伤，治标不治本。";
+  appendStory(state.message);
+  saveGame(state);
+  render(state);
+}
+
+function handleBeggingChoice(text) {
+  state.player.begging = state.player.begging ?? { mode: "none", qianContacted: false };
+  if (!state.player.begging.qianContacted) return null;
+  if (/(交例钱|交钱|认例)/.test(text)) {
+    state.player.begging.mode = "pay";
+    return { handled: true, message: "你认下钱团头的例钱，往后讨饭三成归他。" };
+  }
+  if (/(不交|硬讨|硬来)/.test(text)) {
+    state.player.begging.mode = "resist";
+    return { handled: true, message: "你不认例钱，往后硬在地盘上讨饭。" };
+  }
+  if (/(投靠|入伙|跟钱团头)/.test(text)) {
+    const qian = state.npcs.find((npc) => npc.id === "qian_tuantou");
+    if ((qian?.relation?.favor ?? 0) < 30) return { handled: true, message: "钱团头还不肯收你入门下。" };
+    state.player.begging.mode = "join";
+    if (qian) qian.memories.push({ date: getDateKey(), text: "玩家投到钱团头门下，讨饭抽两成，换好位置。" });
+    return { handled: true, message: "你投到钱团头门下，往后讨饭抽两成，但能占好位置。" };
+  }
+  return null;
+}
+
+async function narrateQianContact() {
+  if (state.player.begging?.qianNarrated || !ensureApiKeyOnFirstEnter()) return;
+  state.player.begging.qianNarrated = true;
+  const wasPaused = state.clock.paused;
+  state.storyLoading = true;
+  state.clock.paused = true;
+  render(state);
+  try {
+    const result = await runStoryAction(state, "身份时刻：钱团头的人来问讨饭地盘规矩", state.storySettings.apiKey, state.storySettings.mode, "重要时刻：玩家在贫民巷/米市/瓦子讨饭累计三次，钱团头的人前来问话。叙事可长至400字，写地盘规矩与三条路：交例钱、不交硬讨、投靠。不要改变身份。 ");
+    appendStory(result.scene);
+    state.message = "钱团头的人来问话，往后讨饭须择规矩。";
+  } catch (error) {
+    state.message = `钱团头问话叙事失败：${error.message}`;
+  } finally {
+    state.storyLoading = false;
+    state.clock.paused = state.dead ? true : wasPaused;
+    saveGame(state);
+    render(state);
+  }
+}
+
+async function triggerScamIfAny(context = {}) {
+  if (!state.storySettings.apiKey) return;
+  const scam = await maybeTriggerScam(state, state.storySettings.apiKey, state.storySettings.mode, context);
+  if (!scam) return;
+  appendStory(scam.scene);
+  state.message = scam.spotted ? `识破${scam.scam.name}。` : `中了${scam.scam.name}，损失${scam.loss}文。`;
+}
+
+function resetDailyGambling(dateKey) {
+  state.player.gambling = state.player.gambling ?? {};
+  if (state.player.gambling.lastDateKey === dateKey) return;
+  if (state.player.gambling.lostToday >= 300) state.player.gambling.redEyeUntil = dateKey;
+  state.player.gambling.lostToday = 0;
+  state.player.gambling.lastDateKey = dateKey;
+}
+
+function startGambling(bet) {
+  if (!isFestivalGamblingLegal(getDateParts(state.clock), state.player.location)) {
+    state.message = "此时此地关扑不敢明摆。";
+    render(state);
+    return;
+  }
+  if (!spendCoins(state.player, bet)) {
+    state.message = `押${bet}文，钱不够。`;
+    render(state);
+    return;
+  }
+  const won = chance(0.42, "good_gamble_win", state.player);
+  state.player.gambling = state.player.gambling ?? { lossStreak: 0, lostToday: 0 };
+  if (won) {
+    addCoins(state.player, bet * 2);
+    state.player.gambling.lossStreak = 0;
+    state.message = `关扑押${bet}文，赢回${bet * 2}文。`;
+  } else {
+    state.player.gambling.lossStreak += 1;
+    state.player.gambling.lostToday = (state.player.gambling.lostToday ?? 0) + bet;
+    state.message = `关扑押${bet}文，输了。`;
+  }
+  appendStory(state.message);
+  if (!won && state.player.gambling.lossStreak >= 3) triggerScamIfAny({ tag: "gamble_loss_streak" });
+  saveGame(state);
+  render(state);
+}
+
+async function handleHouseholdRegistration() {
+  if (state.dead || state.currentAction || state.storyLoading) return;
+  const gate = canApplyHouseholdRegistration(state);
+  if (!gate.ok) {
+    state.message = gate.reason;
+    render(state);
+    return;
+  }
+  const result = startHouseholdRegistration(state);
+  state.message = result.message;
+  saveGame(state);
+  render(state);
+}
+
+function queueIdentityMoment(transition) {
+  if (!transition) return;
+  state.pendingIdentityMoments = Array.isArray(state.pendingIdentityMoments) ? state.pendingIdentityMoments : [];
+  state.pendingIdentityMoments.push(transition);
+}
+
+async function flushIdentityMoments() {
+  if (state.storyLoading || !Array.isArray(state.pendingIdentityMoments) || state.pendingIdentityMoments.length === 0) return;
+  if (!state.storySettings.apiKey) return;
+  const transition = state.pendingIdentityMoments.shift();
+  const wasPaused = state.clock.paused;
+  state.storyLoading = true;
+  state.clock.paused = true;
+  render(state);
+  try {
+    const scene = await runIdentityMoment(state, state.storySettings.apiKey, state.storySettings.mode, transition);
+    appendStory(scene);
+    state.message = `身份变为${transition.to}。`;
+  } catch (error) {
+    state.message = `身份时刻调用失败：${error.message}`;
+  } finally {
+    state.storyLoading = false;
+    state.clock.paused = state.dead ? true : wasPaused;
+    saveGame(state);
+    render(state);
+  }
+}
+
+function createScholarHelpers(wasPaused) {
+  return {
+    append: appendStory,
+    save: () => saveGame(state),
+    advance: (minutes) => advanceGame(minutes, { studying: true }),
+    dateText: () => {
+      const { year, month, day } = getDateParts(state.clock);
+      return `第${year}年${month}月${day}日`;
+    },
+    fail: (message) => ({ handled: true, message }),
+    identityMoment: async (transition) => {
+      try {
+        const scene = await runIdentityMoment(state, state.storySettings.apiKey, state.storySettings.mode, transition);
+        appendStory(scene);
+      } catch (error) {
+        state.message = `身份时刻调用失败：${error.message}`;
+      } finally {
+        state.clock.paused = state.dead ? true : wasPaused;
+      }
+    },
+  };
+}
+
 function restartGame() {
   clearSave();
   state = {
@@ -763,11 +1039,13 @@ function restartGame() {
     studyOpen: false,
     purchaseOpen: false,
     repairOpen: false,
+    pendingIdentityMoments: [],
     storyLoading: false,
     storyLog: [],
     auditLog: [],
     settingsOpen: false,
     showAuditLog: false,
+    showNeighborStatus: false,
     storySettings: loadStorySettings(),
     lastDailySettlement: "",
   };

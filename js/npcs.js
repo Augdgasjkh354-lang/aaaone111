@@ -57,7 +57,7 @@ export const INITIAL_NPCS = [
     age: 40,
     personality: "清高落魄，惜才。",
     situation: "又一年没中，靠代写勉强糊口。",
-    schedule: { 晨: "city_god_temple", 午: "city_god_temple", 暮: "qinghefang", 夜: "south_homes" },
+    schedule: { 晨: "city_god_temple", 午: "city_god_temple", 暮: "academy", 夜: "south_homes" },
     relation: { favor: 0, trust: 0, doubt: 10 },
     memories: [],
     impression: "尚不认识此人",
@@ -111,6 +111,36 @@ export const INITIAL_NPCS = [
     debts: [],
     unknownLabel: "一个米市牙人",
   },
+  {
+    id: "sun_yasi",
+    name: "孙押司",
+    identity: "府衙老吏，约55岁，常在御街茶肆。",
+    age: 55,
+    personality: "圆滑谨慎，无利不动，但守自己的规矩。",
+    situation: "在衙门熬了三十年，想退前再捞一笔安稳钱。",
+    schedule: { 晨: "imperial_street", 午: "imperial_street", 暮: "qinghefang", 夜: "south_homes" },
+    relation: { favor: 0, trust: 0, doubt: 10 },
+    memories: [],
+    impression: "尚不认识此人",
+    assets: { cash: 4000, incomeSource: "府衙书吏积蓄与茶肆往来打点", status: "宽裕" },
+    debts: [],
+    unknownLabel: "一个府衙老吏",
+  },
+  {
+    id: "qian_tuantou",
+    name: "钱团头",
+    identity: "贫民巷丐首，约45岁。",
+    age: 45,
+    personality: "笑面，记账比牙人还精，讲他自己的规矩：交钱的都罩，坏规矩的往死里整。",
+    situation: "地盘西边被另一伙人蚕食，正需要能干的人手。",
+    schedule: { 晨: "rice_market", 午: "slum_alley", 暮: "wazi", 夜: "slum_alley" },
+    relation: { favor: 0, trust: 0, doubt: 10 },
+    memories: [],
+    impression: "尚不认识此人",
+    assets: { cash: 1500, incomeSource: "贫民巷与热闹处讨饭例钱", status: "温饱" },
+    debts: [],
+    unknownLabel: "一个笑面的丐首",
+  },
 ];
 
 const NPC_BY_ID = new Map(INITIAL_NPCS.map((npc) => [npc.id, npc]));
@@ -121,7 +151,7 @@ export function createNpcs(savedNpcs = []) {
 }
 
 export function getPresentNpcs(npcs, locationId, period) {
-  return normalizeNpcList(npcs).filter((npc) => npc.schedule?.[period] === locationId);
+  return normalizeNpcList(npcs).filter((npc) => npc.alive !== false && npc.present !== false && npc.schedule?.[period] === locationId);
 }
 
 export function isNpcKnown(npc) {
@@ -200,6 +230,10 @@ function normalizeNpc(baseNpc, savedNpc = {}) {
     impression: typeof savedNpc.impression === "string" ? savedNpc.impression : baseNpc.impression,
     assets: normalizeAssets(savedNpc.assets ?? baseNpc.assets),
     debts: normalizeDebts(savedNpc.debts),
+    alive: savedNpc.alive === false ? false : true,
+    present: savedNpc.present === false ? false : true,
+    workPausedUntil: Number.isFinite(savedNpc.workPausedUntil) ? Math.max(0, Math.floor(savedNpc.workPausedUntil)) : 0,
+    agingSickCount: Number.isFinite(savedNpc.agingSickCount) ? Math.max(0, Math.floor(savedNpc.agingSickCount)) : 0,
   };
 }
 
@@ -239,7 +273,7 @@ function normalizeDebts(debts = []) {
 
 function normalizeMemories(memories) {
   return Array.isArray(memories)
-    ? memories.filter((memory) => memory && typeof memory.date === "string" && typeof memory.text === "string")
+    ? memories.filter((memory) => memory && typeof memory.date === "string" && typeof memory.text === "string").map((memory) => ({ ...memory, pivotal: Boolean(memory.pivotal) }))
     : [];
 }
 
@@ -257,7 +291,8 @@ async function compressNpcMemories(npc, apiKey) {
     ], "disabled", apiKey);
     const text = summary.trim().slice(0, 60);
     if (!text) return;
-    npc.memories = [{ date: "往日记忆", text }, ...remainingMemories.slice(-(MAX_NPC_MEMORIES - 1))];
+    const pivotal = npc.memories.filter((memory) => memory.pivotal);
+    npc.memories = [...pivotal, { date: "往日记忆", text }, ...remainingMemories.slice(-(MAX_NPC_MEMORIES - 1))].slice(-MAX_NPC_MEMORIES);
   } catch (error) {
     console.warn(`${npc.name}的记忆压缩失败，将留待下次尝试。`, error);
   }

@@ -449,3 +449,21 @@ h2 {
 .work-list small {
   color: var(--muted-ink);
 }
+
+.hidden {
+  display: none !important;
+}
+
+.tianji-mark {
+  position: fixed;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 20;
+  opacity: 0.38;
+  border: 1px solid rgba(120, 90, 40, 0.35);
+  border-radius: 999px;
+  background: rgba(246, 232, 190, 0.55);
+  color: #6b4b1f;
+  padding: 0.35rem 0.55rem;
+  cursor: pointer;
+}

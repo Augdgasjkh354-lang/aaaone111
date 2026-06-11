@@ -10,20 +10,27 @@ import { describeIllnesses } from "./illness.js";
 import { getRumors } from "./worldtick.js";
 import { grantNarrativeItem, hasItem, removeNarrativeItem } from "./items.js";
 import { gainSkill, getSkillSummary } from "./skills.js";
+import { getIdentityContext, getIdentitySystemPromptRule } from "./identity.js";
 import { getClimateText } from "./season.js";
+import { hasJieCredit } from "./scholar.js";
+import { getFestivalContext, getNightMarketContext } from "./festival.js";
+import { getLaborContext } from "./labor.js";
+import { getRippleText } from "./neighborchain.js";
 
 const SYSTEM_PROMPT = `你是南宋淳熙年间临安城的世界模拟器，负责根据玩家行动生成接下来真实发生的事。
 世界真实运转，不围着玩家转。玩家是普通人，他的身份决定他能触碰什么。
 玩家尝试超出身份的事（如乞儿求见知府），不要拒绝，生成符合现实的失败过程。
 只有物理不可能、跳出宋代世界观、违背道德底线的输入，才返回 {"rejected": true}。
-在场人物列表里的人是真实存在的居民，按其性格处境行动，不认识玩家时就当陌生人对待。
+在场人物列表里的人是真实存在的居民，按其性格处境行动，不认识玩家时就当陌生人对待。逝者可以被回忆与谈起，但不得复活、不得出现在现场。
 不在列表里的人可以临时虚构（路人、小贩），但他们没有记忆，不要赋予重要戏份。
 玩家行动若提到不在场的核心NPC（去找某人但他不在此地此时），如实生成“找不到人”的结果。
 物价锚点：粗饭一顿10文，像样一顿30文，力夫日薪约100文，租屋月租450文，租屋押金200文，看病抓药100-500文，一两银=1000文。一切涉及钱的叙事必须符合这些物价。
 NPC的钱是有限的：拮据者拿不出几十文，借钱、施舍、payment必须符合其生计状况。
 玩家与NPC之间发生借贷时，如实通过debt_updates记录。
 人们以衣观人，衣着决定你在体面场所受到的对待。
-风闻是城中正在发生的背景，可自然织入叙事，但玩家无力改变这些大势。
+${getIdentitySystemPromptRule()}
+风闻是城中正在发生的背景，可自然织入叙事，但玩家无力改变这些大势。人随日子往前走，旧事塑造人物的态度与处境，但NPC不主动反复提起，除非玩家问起或情境强相关。
+除夕/元旦等年节是写尽底层孤独的时刻，不滥情，只写灯火与无家者之间的冷暖差。
 AI可让玩家能力小幅成长，用skill_gain；师承达成用mentor_unlock；可发放叙事物品item_grant或移除叙事物品item_remove。
 叙事要求：白话文言风格、克制、具体、不抒情堆砌，每次100-250字，写“发生了什么”而非“感受如何”。
 严格只输出JSON，格式如下：
@@ -140,31 +147,37 @@ function buildStoryContext(state, actionText, extraContext = "") {
   const injuries = Array.isArray(state.player.injuries) && state.player.injuries.length > 0
     ? state.player.injuries.join("、")
     : "无";
+  const festivalContext = getFestivalContext({ year, month, day });
+  const nightMarketContext = getNightMarketContext(location.id, period);
+  const laborContext = getLaborContext(state.player, festivalContext.text || getClimateText(month));
+  const rippleText = getRippleText(state.world, location.id);
 
   return {
     presentNpcs,
     dateKey,
     userContent: `当前时间：第${year}年${month}月${day}日，${period}，${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}，季节：${getSeason(month)}。
-当前位置：${location.name}。${location.description}
-主角状态：身份出身：城中贫民；年龄：${Math.floor(getCurrentAge(state.player, state.clock.elapsedMinutes))}岁；身体状况：${describeHealth(state.player.health)}，${describeSatiety(state.player.satiety)}，${describeStamina(state.player.stamina)}；疾病与将养：${describeIllnesses(state.player)}；能力：${getSkillSummary(state.player.skills)}；衣着：${state.player.clothing}；整洁：${getCleanlinessText(state.player.cleanliness)}；随身物品：${itemNames}；钱财：铜钱${Math.floor(state.player.coins)}文，银两${state.player.silver}，会子${state.player.huizi}；住所：${state.player.housing}；欠债/被欠：${debtLines.length > 0 ? debtLines.join("、") : "无"}；当前伤病：${injuries}。
-季节气候：${getClimateText(month)}。
+当前位置：${location.name}。${location.description}${rippleText ? ` ${rippleText}` : ""}
+主角状态：${getIdentityContext(state.player)}${laborContext ? `；${laborContext}` : ""}${state.player.officialRisk ? `；官面风险有案底影子（仅叙事）` : ""}；年龄：${Math.floor(getCurrentAge(state.player, state.clock.elapsedMinutes))}岁；身体状况：${describeHealth(state.player.health)}，${describeSatiety(state.player.satiety)}，${describeStamina(state.player.stamina)}；疾病与将养：${describeIllnesses(state.player)}；能力：${getSkillSummary(state.player.skills)}；衣着：${state.player.clothing}；整洁：${getCleanlinessText(state.player.cleanliness)}；随身物品：${itemNames}；钱财：铜钱${Math.floor(state.player.coins)}文，银两${state.player.silver}，会子${state.player.huizi}；住所：${state.player.housing}；欠债/被欠：${debtLines.length > 0 ? debtLines.join("、") : "无"}；当前伤病：${injuries}。
+季节气候：${festivalContext.text || getClimateText(month)}。${nightMarketContext ? `\n${nightMarketContext}` : ""}
 物价锚点：${Object.entries(PRICE_ANCHORS).map(([name, price]) => `${name}${price}`).join("；")}。
 最近记忆：${memories.length > 0 ? memories.map((memory) => `${memory.date}：${memory.text}`).join("；") : "无"}。
 近日城中风闻：${rumors.length > 0 ? rumors.join("；") : "无"}
-在场人物：${formatPresentNpcs(presentNpcs)}
-${extraContext ? `额外上下文：${extraContext}\n` : ""}玩家本次行动原文：${actionText}`,
+在场人物：${formatPresentNpcs(presentNpcs, state.player, { year, month, day })}
+系统补充：骗局叙事要按宋代市井骗术的真实手法写，过程可信，不漫画化。${state.player.begging?.mode === "join" ? "玩家有丐籍之人标签，衙门书吏路线身份观感受损；办附籍打点费更重。" : ""}${state.player.gambling?.redEyeUntil === dateKey ? "玩家昨日关扑输红了眼，今日叙事可带急躁赌性。" : ""}\n${extraContext ? `额外上下文：${extraContext}\n` : ""}玩家本次行动原文：${actionText}`,
   };
 }
 
-function formatPresentNpcs(presentNpcs) {
+function formatPresentNpcs(presentNpcs, player = null, clockParts = null) {
   if (presentNpcs.length === 0) return "无核心NPC在场。";
+  const creditRule = player && hasJieCredit(player) ? "｜借贷信用提示：玩家得解或曾得解，NPC若性格不相斥，借钱意愿应较普通贫民上调。" : "";
   return presentNpcs.map((npc) => {
-    const npcMemories = npc.memories.slice(-3).map((memory) => `${memory.date}：${memory.text}`).join("；");
+    const ageText = Number.isFinite(npc.age) && clockParts ? `约${npc.age + clockParts.year - 1}岁` : `约${npc.age ?? "?"}岁`;
+    const npcMemories = getRecentNpcMemories(npc.memories, clockParts).map((memory) => `${memory.date}：${memory.text}`).join("；");
     const memoryText = isNpcKnown(npc) && npcMemories ? npcMemories : "与玩家素不相识";
     const debtText = npc.debts?.length > 0
       ? npc.debts.map((debt) => `${debt.withPlayer === "player_owes" ? "玩家欠此人" : "此人欠玩家"}${debt.amount}文（${debt.note}）`).join("；")
       : "无债务";
-    return `${npc.name}｜${npc.identity}｜${npc.personality}｜${npc.situation}｜${npc.impression}｜${memoryText}｜生计状况：${npc.assets.status}，${npc.assets.incomeSource}｜与玩家债务：${debtText}`;
+    return `${npc.name}｜${ageText}｜${npc.identity}｜${npc.personality}｜${npc.situation}｜${npc.impression}｜${memoryText}｜生计状况：${npc.assets.status}，${npc.assets.incomeSource}｜与玩家债务：${debtText}${creditRule}`;
   }).join("\n");
 }
 
@@ -210,4 +223,15 @@ function getCleanlinessText(value) {
   if (value < 50) return "风尘仆仆";
   if (value <= 80) return "还算干净";
   return "清爽整洁";
+}
+
+function getRecentNpcMemories(memories = [], parts = null) {
+  if (!parts) return memories.slice(-3);
+  const now = (parts.year - 1) * 360 + (parts.month - 1) * 30 + parts.day;
+  return memories.filter((memory) => {
+    const match = String(memory.date).match(/第(\d+)年(\d+)月(\d+)日/);
+    if (!match) return false;
+    const then = (Number(match[1]) - 1) * 360 + (Number(match[2]) - 1) * 30 + Number(match[3]);
+    return now - then <= 30;
+  }).slice(-5);
 }

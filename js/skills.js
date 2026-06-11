@@ -1,5 +1,11 @@
 const SKILL_KEYS = ["wen", "wu", "suan", "tan"];
 const SELF_STUDY_CAPS = { wen: 30, wu: 30, suan: 25, tan: 0 };
+const WEN_PROGRESS_REQUIREMENTS = [
+  { min: 71, points: 8 },
+  { min: 51, points: 5 },
+  { min: 31, points: 3 },
+  { min: 0, points: 1 },
+];
 
 export function normalizeSkills(savedSkills = {}) {
   return {
@@ -25,6 +31,12 @@ export function normalizeDailySkillGains(saved = {}) {
     wu: Number.isFinite(saved.wu) ? saved.wu : 0,
     suan: Number.isFinite(saved.suan) ? saved.suan : 0,
     tan: Number.isFinite(saved.tan) ? saved.tan : 0,
+  };
+}
+
+export function normalizeSkillProgress(saved = {}) {
+  return {
+    wen: Number.isFinite(saved.wen) ? Math.max(0, saved.wen) : 0,
   };
 }
 
@@ -60,20 +72,22 @@ export function getSkillSummary(skills) {
 
 export function getSkillCap(skill, player) {
   if (skill === "tan") return 100;
+  if (skill === "wen" && player.scholar?.academyStudent) return 90;
   const mentorCap = player.mentorUnlocks?.[skill] ? { wen: 70, wu: 70, suan: 60 }[skill] : null;
   return mentorCap ?? SELF_STUDY_CAPS[skill] ?? 30;
 }
 
 export function canUnlockMentor(skill, npcs) {
-  if (skill === "wen") return (npcs.find((npc) => npc.id === "mr_wu")?.relation?.trust ?? 0) >= 25;
+  if (skill === "wen") return false;
   if (skill === "wu") return (npcs.find((npc) => npc.id === "chen_si")?.relation?.trust ?? 0) >= 30;
   if (skill === "suan") return (npcs.find((npc) => npc.id === "liu_mazi")?.relation?.favor ?? 0) >= 20;
   return false;
 }
 
-export function gainSkill(player, skill, amount, dateKey) {
+export function gainSkill(player, skill, amount, dateKey, options = {}) {
   if (!SKILL_KEYS.includes(skill)) return 0;
   player.dailySkillGains = normalizeDailySkillGains(player.dailySkillGains);
+  player.skillProgress = normalizeSkillProgress(player.skillProgress);
   if (player.dailySkillGains.dateKey !== dateKey) {
     player.dailySkillGains = { dateKey, wen: 0, wu: 0, suan: 0, tan: 0 };
   }
@@ -81,33 +95,52 @@ export function gainSkill(player, skill, amount, dateKey) {
   if (cappedAmount <= 0 || player.dailySkillGains[skill] >= 3) return 0;
 
   const roomToday = 3 - player.dailySkillGains[skill];
-  const gain = Math.min(cappedAmount, roomToday);
+  const rawPoints = Math.min(cappedAmount, roomToday) * (Number.isFinite(options.multiplier) ? options.multiplier : 1);
   const cap = getSkillCap(skill, player);
-  const before = player.skills[skill];
-  player.skills[skill] = Math.min(cap, before + gain);
-  const actual = player.skills[skill] - before;
-  player.dailySkillGains[skill] += actual;
-  return actual;
+  if (player.skills[skill] >= cap) return 0;
+
+  if (skill !== "wen") {
+    const before = player.skills[skill];
+    player.skills[skill] = Math.min(cap, before + Math.floor(rawPoints));
+    const actual = player.skills[skill] - before;
+    player.dailySkillGains[skill] += actual;
+    return actual;
+  }
+
+  player.skillProgress.wen += rawPoints;
+  let gained = 0;
+  while (player.skills.wen < cap && player.skillProgress.wen >= getWenPointsRequired(player.skills.wen + 1)) {
+    player.skillProgress.wen -= getWenPointsRequired(player.skills.wen + 1);
+    player.skills.wen += 1;
+    gained += 1;
+    if (gained >= roomToday) break;
+  }
+  player.dailySkillGains.wen += 1;
+  return gained;
+}
+
+export function getWenPointsRequired(nextValue) {
+  return WEN_PROGRESS_REQUIREMENTS.find((rule) => nextValue >= rule.min)?.points ?? 1;
 }
 
 export function getStudyOptions(state) {
+  const hasOldBook = state.player.inventory.some((item) => item.name === "旧书");
+  const hasClassic = state.player.inventory.some((item) => item.name === "经书");
+  const inAcademy = state.player.location === "academy";
+  const academyAccess = Boolean(state.player.scholar?.auditing || state.player.scholar?.academyStudent);
+  const wenCap = getSkillCap("wen", state.player);
+  const wenValue = state.player.skills.wen;
+  const highWenNeedsAcademy = wenValue >= 50;
+  const wenAvailable = hasOldBook && (!highWenNeedsAcademy || (inAcademy && academyAccess && hasClassic));
+  const wenReason = !hasOldBook ? "需要旧书" : highWenNeedsAcademy && !inAcademy ? "文51以上须在书院修习" : highWenNeedsAcademy && !academyAccess ? "需书院旁听或正学资格" : highWenNeedsAcademy && !hasClassic ? "文51以上须持经书" : "";
   return [
-    {
-      id: "study_wen",
-      name: "认字自习",
-      skill: "wen",
-      durationMinutes: 120,
-      staminaCost: 8,
-      available: state.player.inventory.some((item) => item.name === "旧书"),
-      reason: "需要旧书",
-      cap: 30,
-    },
-    { id: "study_wu", name: "练拳", skill: "wu", durationMinutes: 120, staminaCost: 20, available: true, reason: "", cap: 30 },
-    { id: "study_suan", name: "学着记账", skill: "suan", durationMinutes: 120, staminaCost: 10, available: true, reason: "", cap: 25 },
+    { id: "study_wen", name: inAcademy ? "书院修文" : "认字自习", skill: "wen", durationMinutes: 120, staminaCost: 8, available: wenAvailable, reason: wenReason, cap: wenCap },
+    { id: "study_wu", name: "练拳", skill: "wu", durationMinutes: 120, staminaCost: 20, available: true, reason: "", cap: getSkillCap("wu", state.player) },
+    { id: "study_suan", name: "学着记账", skill: "suan", durationMinutes: 120, staminaCost: 10, available: true, reason: "", cap: getSkillCap("suan", state.player) },
   ].map((option) => ({
     ...option,
     available: option.available && state.player.skills[option.skill] < option.cap,
-    reason: option.available ? (state.player.skills[option.skill] >= option.cap ? "自习已到上限" : "") : option.reason,
+    reason: option.available ? (state.player.skills[option.skill] >= option.cap ? "修习已到上限" : "") : option.reason,
   }));
 }
 

@@ -1,4 +1,4 @@
-import { isColdMonth } from "./season.js";
+import { chance } from "./luck.js";
 
 export const ILLNESSES = {
   wind_cold: { id: "wind_cold", name: "风寒" },
@@ -87,7 +87,7 @@ export function dailyIllnessSettlement(player, context = {}) {
     }
 
     player.health = Math.max(1, player.health - (illness.stage === "重" ? 5 : 2));
-    if (illness.stage === "轻" && illness.days >= 5 && Math.random() < 0.1 * multiplier) illness.stage = "重";
+    if (illness.stage === "轻" && illness.days >= 5 && chance(0.1 * multiplier, "bad_illness_worse", player)) illness.stage = "重";
   });
 
   player.illnesses = player.illnesses.filter((illness) => !illness.cured);
@@ -97,7 +97,7 @@ export function dailyIllnessSettlement(player, context = {}) {
 export function checkStrenuousWorsening(player, staminaCost) {
   if (staminaCost < 30 || !Array.isArray(player.illnesses)) return;
   const light = player.illnesses.find((illness) => illness.stage === "轻" && illness.id !== "recovery");
-  if (light && Math.random() < 0.15) light.stage = "重";
+  if (light && chance(0.15, "bad_illness_worse", player)) light.stage = "重";
 }
 
 export function checkBellyAfterMeal(player, satietyGain) {
@@ -133,5 +133,5 @@ export function treatByDoctor(player) {
 }
 
 function rollIllness(player, id, probability) {
-  if (Math.random() < probability) addIllness(player, id, "轻");
+  if (chance(probability, "bad_illness", player)) addIllness(player, id, "轻");
 }

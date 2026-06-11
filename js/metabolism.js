@@ -27,6 +27,12 @@ export function applyMetabolism(player, gameMinutes, { sleeping = false } = {}) 
 export function getDeath(player) {
   if (player.health > 0) return null;
   return {
-    reason: "你饿死了。",
+    reason: getDeathReason(player),
   };
+}
+
+function getDeathReason(player) {
+  if (player.identity === "进士(待阙)") return "进士候阙未久，竟困饿病死临安。坊巷与士林说起，皆叹一个已传胪唱名的人没等到注官。";
+  if (player.identity === "得解士子" || player.scholar?.hadJie) return "曾得解的士子困饿而死。贫巷记得他登过解榜，士林也知这份分量，死讯便不只是无名饿殍。";
+  return "你饿死了。";
 }
