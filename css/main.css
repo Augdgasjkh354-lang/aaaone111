@@ -467,3 +467,23 @@ h2 {
   padding: 0.35rem 0.55rem;
   cursor: pointer;
 }
+
+.tianji-mark.enabled {
+  opacity: 1;
+  border-color: #8f1f1f;
+  background: #a62020;
+  color: #fff8e9;
+  box-shadow: 0 0 16px rgba(166, 32, 32, 0.45);
+}
+
+.tianji-receipt {
+  margin: 8px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 248, 233, 0.72);
+  padding: 10px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  color: #7a2424;
+}

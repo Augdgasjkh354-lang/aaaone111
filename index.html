@@ -96,10 +96,49 @@
           <button type="button" id="saveSettingsButton">保存</button>
           <button type="button" id="householdRegistrationButton">办附籍</button>
           <button type="button" id="neighborStatusButton">街坊近况</button>
+          <button type="button" id="businessLedgerButton">生意账</button>
+          <button type="button" id="justiceButton">官面</button>
+          <button type="button" id="routineButton">起居</button>
+          <button type="button" id="tianjiPanelButton">天机页</button>
           <button type="button" id="viewAuditLogButton">查看日志</button>
           <button type="button" id="closeSettingsButton">关闭</button>
         </div>
         <div class="audit-log hidden" id="neighborStatusLog"></div>
+        <div class="audit-log hidden" id="businessLedgerLog"></div>
+        <div class="audit-log hidden" id="justiceLog"></div>
+        <div class="audit-log hidden" id="routinePanel">
+          <p>
+            <label><input type="checkbox" id="routineAutoEat" /> 自动吃饭</label>
+            <select id="routineMealType"><option value="rough">粗饭</option><option value="fine">像样饭</option></select>
+          </p>
+          <p>
+            <label><input type="checkbox" id="routineAutoSleep" /> 自动睡觉</label>
+            <label><input type="checkbox" id="routineAutoBath" /> 自动洗浴</label>
+            <label><input type="checkbox" id="routineAutoDues" /> 自动续租/发薪/例钱</label>
+          </p>
+          <p>
+            <label><input type="checkbox" id="routineBreakFestival" /> 节庆首日打断</label>
+            <label><input type="checkbox" id="routineMonthlySummary" /> 月度起居注</label>
+          </p>
+          <p>晨 <select id="routineSchedule晨"></select> 午 <select id="routineSchedule午"></select> 暮 <select id="routineSchedule暮"></select> 夜 <select id="routineSchedule夜"></select></p>
+          <p>连续 <input type="number" id="routineDaysInput" min="1" max="30" value="30" /> 日
+            <button type="button" id="saveRoutineButton">保存起居</button>
+            <button type="button" id="startRoutineButton">过日子</button>
+            <button type="button" id="stopRoutineButton">暂停</button>
+          </p>
+          <div id="routineLog"></div>
+        </div>
+        <div class="audit-log hidden" id="tianjiPanel">
+          <p id="tianjiStatus">天机未开。</p>
+          <p>天机开启时，自由行动输入将发往专用解析器，生成变更清单，经白名单、黑名单、类型边界三重网关后执行；回执只显示已改/已拒，不生成叙事。</p>
+          <p>黑名单含案件状态与量刑结论、时间引擎常量、存档结构、价格锚点表、chance封顶参数与天机系统自身。</p>
+          <div class="settings-actions">
+            <button type="button" id="restoreTianjiButton">回溯上一会话</button>
+            <button type="button" id="closeTianjiButton">关闭天机</button>
+          </div>
+          <pre id="tianjiReceipt" class="tianji-receipt">天机无声。</pre>
+          <div id="tianjiLog"></div>
+        </div>
         <div class="audit-log hidden" id="auditLog"></div>
       </div>
     </div>

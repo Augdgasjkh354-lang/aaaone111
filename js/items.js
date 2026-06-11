@@ -11,6 +11,11 @@ export const CATALOG_ITEMS = [
   { id: "lantern", name: "灯笼", location: "rice_market", vendor: "杂货", price: 40, type: "catalog", desc: "夜路照明" },
   { id: "medicine", name: "伤药", location: "qinghefang", vendor: "药铺", price: 100, type: "medicine", desc: "可移除风寒或一项轻伤" },
   { id: "coal_basket", name: "一篮炭", location: "rice_market", vendor: "杂货", price: 30, type: "catalog", desc: "过冬取暖的炭" },
+  { id: "stove_tools", name: "担炉炊具", location: "qinghefang", vendor: "估衣铺旁杂货", price: 280, type: "catalog", desc: "炊饼熟食行贩工具" },
+  { id: "fish_baskets", name: "挑担鱼篓", location: "dock", vendor: "码头竹器摊", price: 120, type: "catalog", desc: "鱼鲜果蔬周转担具" },
+  { id: "cloth_rack", name: "包袱货架", location: "qinghefang", vendor: "估衣铺旁杂货", price: 60, type: "catalog", desc: "估衣行贩包袱货架" },
+  { id: "brush_ink", name: "笔墨", location: "qinghefang", vendor: "纸笔摊", price: 40, type: "catalog", desc: "赊销立契所需" },
+  { id: "iron_lock_cabinet", name: "铁锁木柜", location: "qinghefang", vendor: "木器铺", price: 200, type: "catalog", desc: "摊铺夜间锁货，失窃风险降低" },
 ];
 
 export function normalizeInventory(inventory = []) {
@@ -18,7 +23,9 @@ export function normalizeInventory(inventory = []) {
     ? inventory.filter((item) => item && typeof item.name === "string").map((item) => ({
       name: item.name.slice(0, 60),
       desc: typeof item.desc === "string" ? item.desc.slice(0, 60) : "",
-      kind: item.kind === "随身物" ? "随身物" : "目录物品",
+      kind: item.kind === "随身物" || item.kind === "赃物" ? item.kind : "目录物品",
+      stolen: Boolean(item.stolen),
+      crimeId: typeof item.crimeId === "string" ? item.crimeId : "",
     }))
     : [];
 }

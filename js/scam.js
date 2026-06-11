@@ -13,6 +13,9 @@ const SCAMS = [
   { id: "loaded_gamble", name: "关扑设套", base: 0.12, bait: "关扑摊边有老手说替你翻本，骰碗却不肯离手。", loss: [80, 300], condition: (state, context) => context?.tag === "gamble_loss_streak" || state.player.gambling?.lossStreak >= 3 },
   { id: "fortune_shill", name: "卦肆托儿", base: 0.05, bait: "卦肆旁有人说先生能改运，只要另奉香钱。", loss: [120, 400], condition: (state, context) => context?.tag === "divination" || state.player.location === "city_god_temple" },
   { id: "fake_recommendation", name: "代写假荐书", base: 0.04, bait: "有人称可代写荐书，递到先生门下便有进身路。", loss: [120, 360], condition: (state) => (state.player.skills?.wen ?? 0) >= 30 },
+  { id: "salt_smuggler_case", name: "盐枭案", base: 1, bait: "私盐线上的刘麻子忽然改口，说巡检只查旁人不查熟路。", loss: [80, 260], condition: (state, context) => context?.tag === "private_salt" },
+  { id: "night_boat_inspection", name: "夜船撞巡检", base: 1, bait: "夜船靠埠时灯火忽灭，水面却有巡检小舟横过来。", loss: [60, 220], condition: (state, context) => context?.tag === "night_boat" },
+  { id: "stolen_clothes_owner", name: "赃衣失主认领", base: 1, bait: "旧衣摊前有人忽然扯住一件衣裳，说针脚暗记是自家的。", loss: [50, 180], condition: (state, context) => context?.tag === "stolen_clothes" },
 ];
 
 export function normalizeScamState(saved = {}) {

@@ -4,6 +4,7 @@ import { getLocation, getNeighborLocations, getTravelStaminaCost } from "./world
 import { getAuditLog } from "./guard.js";
 import { getNpcDisplayName, getPlayerDebtLines, getPresentNpcs } from "./npcs.js";
 import { getAvailableWorks } from "./work.js";
+import { getBusinessActions, getBusinessLedger } from "./business.js";
 import { getPurchasableItems } from "./items.js";
 import { describeIllnesses } from "./illness.js";
 import { getSkillSummary, getStudyOptions } from "./skills.js";
@@ -13,6 +14,9 @@ import { isFestivalGamblingLegal } from "./festival.js";
 import { getActiveNeighborStatuses } from "./neighborchain.js";
 import { canApplyHouseholdRegistration } from "./identity.js";
 import { getExamTimelineText } from "./scholar.js";
+import { getJusticeActions, getJusticeLedgerLines } from "./justice.js";
+import { ROUTINE_OPTIONS, ROUTINE_PERIODS, getRoutineLogLines } from "./routine.js";
+import { getTianjiLog, isTianjiEnabled } from "./tianji.js";
 
 export function bindControls(handlers) {
   document.getElementById("speedSelect").addEventListener("change", (event) => {
@@ -22,9 +26,9 @@ export function bindControls(handlers) {
   document.getElementById("pauseButton").addEventListener("click", handlers.onTogglePause);
   document.getElementById("restartButton").addEventListener("click", handlers.onRestart);
   document.getElementById("deathRestartButton").addEventListener("click", handlers.onRestart);
-  document.getElementById("tianjiMark").addEventListener("click", () => window.alert("天机未开"));
   document.getElementById("travelToggleButton").addEventListener("click", handlers.onToggleTravel);
   document.getElementById("cancelTravelButton").addEventListener("click", handlers.onCancelTravel);
+  bindTianjiMark(handlers);
   document.getElementById("settingsButton").addEventListener("click", handlers.onOpenSettings);
   document.getElementById("closeSettingsButton").addEventListener("click", handlers.onCloseSettings);
   document.getElementById("saveSettingsButton").addEventListener("click", () => {
@@ -38,6 +42,15 @@ export function bindControls(handlers) {
   });
   document.getElementById("viewAuditLogButton").addEventListener("click", handlers.onViewAuditLog);
   document.getElementById("neighborStatusButton").addEventListener("click", handlers.onViewNeighborStatus);
+  document.getElementById("businessLedgerButton").addEventListener("click", handlers.onViewBusinessLedger);
+  document.getElementById("justiceButton").addEventListener("click", handlers.onViewJustice);
+  document.getElementById("routineButton").addEventListener("click", handlers.onViewRoutine);
+  document.getElementById("tianjiPanelButton").addEventListener("click", handlers.onViewTianji);
+  document.getElementById("closeTianjiButton").addEventListener("click", handlers.onCloseTianji);
+  document.getElementById("restoreTianjiButton").addEventListener("click", handlers.onRestoreTianji);
+  document.getElementById("saveRoutineButton").addEventListener("click", () => handlers.onSaveRoutine(readRoutineForm()));
+  document.getElementById("startRoutineButton").addEventListener("click", () => handlers.onStartRoutine(Number(document.getElementById("routineDaysInput").value || 30)));
+  document.getElementById("stopRoutineButton").addEventListener("click", handlers.onStopRoutine);
   document.getElementById("householdRegistrationButton").addEventListener("click", handlers.onHouseholdRegistration);
   document.getElementById("studyToggleButton").addEventListener("click", handlers.onToggleStudy);
   document.getElementById("purchaseToggleButton").addEventListener("click", handlers.onTogglePurchase);
@@ -55,9 +68,11 @@ export function bindControls(handlers) {
   });
 
   document.getElementById("workList").addEventListener("click", (event) => {
-    const button = event.target.closest("[data-work]");
+    const button = event.target.closest("[data-work], [data-business], [data-justice]");
     if (!button || button.disabled) return;
-    handlers.onWork(button.dataset.work);
+    if (button.dataset.business) handlers.onBusiness(button.dataset.business);
+    else if (button.dataset.justice) handlers.onJustice(button.dataset.justice);
+    else handlers.onWork(button.dataset.work);
   });
   document.getElementById("studyList").addEventListener("click", (event) => {
     const button = event.target.closest("[data-study]");
@@ -86,12 +101,39 @@ export function bindControls(handlers) {
   });
 }
 
+function bindTianjiMark(handlers) {
+  const mark = document.getElementById("tianjiMark");
+  let timer = null;
+  let longPressed = false;
+  const clear = () => { if (timer) window.clearTimeout(timer); timer = null; };
+  const start = (event) => {
+    event.preventDefault();
+    longPressed = false;
+    clear();
+    timer = window.setTimeout(() => { longPressed = true; handlers.onTianjiLongPress(); }, 3000);
+  };
+  const end = (event) => {
+    event.preventDefault();
+    clear();
+  };
+  mark.addEventListener("pointerdown", start);
+  mark.addEventListener("pointerup", end);
+  mark.addEventListener("pointerleave", end);
+  mark.addEventListener("pointercancel", end);
+  mark.addEventListener("click", (event) => {
+    event.preventDefault();
+    if (longPressed) return;
+    handlers.onTianjiClick();
+  });
+}
+
 export function render(state) {
   renderTime(state);
   renderPlayer(state);
   renderStoryLog(state);
   renderActions(state);
   renderSettings(state);
+  renderTianjiMark(state);
   renderDeath(state);
 }
 
@@ -223,12 +265,25 @@ function renderWorkControls(state, busy) {
     return;
   }
 
-  workList.innerHTML = getAvailableWorks(state).map((work) => `
+  const workButtons = getAvailableWorks(state).map((work) => `
     <button type="button" data-work="${work.id}" ${work.available ? "" : "disabled"} title="${escapeHtml(work.reason || work.description)}">
       <span>${escapeHtml(work.name)}</span>
       <small>${work.durationMinutes / 60}小时 · ${work.available ? escapeHtml(work.description) : escapeHtml(work.reason)}</small>
     </button>
-  `).join("");
+  `);
+  const businessButtons = getBusinessActions(state).map((action) => `
+    <button type="button" data-business="${action.id}" ${action.available ? "" : "disabled"} title="${escapeHtml(action.reason || action.description)}">
+      <span>${escapeHtml(action.name)}</span>
+      <small>${action.available ? escapeHtml(action.description) : escapeHtml(action.reason)}</small>
+    </button>
+  `);
+  const justiceButtons = getJusticeActions(state).map((action) => `
+    <button type="button" data-justice="${action.id}" ${action.available ? "" : "disabled"} title="${escapeHtml(action.reason || action.description)}">
+      <span>${escapeHtml(action.name)}</span>
+      <small>${action.available ? escapeHtml(action.description) : escapeHtml(action.reason)}</small>
+    </button>
+  `);
+  workList.innerHTML = [...workButtons, ...businessButtons, ...justiceButtons].join("");
 }
 
 function renderStudyControls(state, busy) {
@@ -274,11 +329,14 @@ function renderInventory(state) {
 }
 
 function renderFreeAction(state, busy) {
+  const form = document.getElementById("freeActionForm");
   const input = document.getElementById("freeActionInput");
   const button = document.getElementById("freeActionButton");
+  form.classList.toggle("hidden", Boolean(state.player.routine?.running) && !isTianjiEnabled(state.player));
   input.disabled = busy;
   button.disabled = busy || input.value.trim().length === 0;
-  button.textContent = state.storyLoading ? "……" : "行动";
+  button.textContent = state.storyLoading ? "……" : (isTianjiEnabled(state.player) ? "天机" : "行动");
+  input.placeholder = isTianjiEnabled(state.player) ? "天机已开：例如，把我的铜钱设为一千文" : "例如：我去米市看看粮价";
 }
 
 function renderTravelControls(state, busy, traveling) {
@@ -329,9 +387,35 @@ function renderSettings(state) {
   registrationButton.title = registrationGate.ok ? "满足条件，办理需3日" : registrationGate.reason;
   document.querySelector('#housingSelect option[value="破庙"]').disabled = !state.player.unlockedHousing?.temple;
   renderNeighborStatus(state);
+  renderBusinessLedger(state);
+  renderJustice(state);
+  renderRoutine(state);
+  renderTianjiPanel(state);
   renderAuditLog(state);
 }
 
+
+function renderTianjiMark(state) {
+  const mark = document.getElementById("tianjiMark");
+  const enabled = isTianjiEnabled(state.player);
+  mark.classList.toggle("enabled", enabled);
+  mark.textContent = enabled ? "天机" : "天机";
+  mark.title = enabled ? "天机已开：点击入天机页，长按三秒关闭" : "长按三秒开启天机";
+}
+
+function renderTianjiPanel(state) {
+  const panel = document.getElementById("tianjiPanel");
+  panel.classList.toggle("hidden", !state.showTianji);
+  if (!state.showTianji) return;
+  const tianji = state.player.tianji || {};
+  document.getElementById("tianjiStatus").textContent = tianji.enabled ? "朱红常亮：天机已开。自由输入将改走天机管线。" : "天机未开。长按右上天机印三秒启闭。";
+  document.getElementById("closeTianjiButton").textContent = tianji.enabled ? "关闭天机" : "开启天机";
+  document.getElementById("tianjiReceipt").textContent = tianji.lastReceipt || "天机无声。";
+  const entries = getTianjiLog().slice().reverse();
+  document.getElementById("tianjiLog").innerHTML = entries.length ? entries.map((entry) => `
+    <article class="audit-entry"><time>${escapeHtml(entry.timestamp)}</time><pre>原文：${escapeHtml(entry.raw)}\n解析：${escapeHtml(JSON.stringify(entry.parsed))}\n结果：${escapeHtml(JSON.stringify(entry.results))}</pre></article>
+  `).join("") : "<p>暂无天机录。</p>";
+}
 
 function renderNeighborStatus(state) {
   const log = document.getElementById("neighborStatusLog");
@@ -341,6 +425,54 @@ function renderNeighborStatus(state) {
   log.innerHTML = statuses.length > 0
     ? statuses.map((line) => `<p>${escapeHtml(line)}</p>`).join("")
     : `<p>街坊眼下无急事。</p>`;
+}
+
+function renderBusinessLedger(state) {
+  const log = document.getElementById("businessLedgerLog");
+  log.classList.toggle("hidden", !state.showBusinessLedger);
+  if (!state.showBusinessLedger) return;
+  log.innerHTML = getBusinessLedger(state).map((line) => `<p>${escapeHtml(line)}</p>`).join("");
+}
+
+function renderJustice(state) {
+  const log = document.getElementById("justiceLog");
+  log.classList.toggle("hidden", !state.showJustice);
+  if (!state.showJustice) return;
+  log.innerHTML = getJusticeLedgerLines(state).map((line) => `<p>${escapeHtml(line)}</p>`).join("");
+}
+
+function renderRoutine(state) {
+  const panel = document.getElementById("routinePanel");
+  panel.classList.toggle("hidden", !state.showRoutine);
+  if (!state.showRoutine) return;
+  const routine = state.player.routine;
+  document.getElementById("routineAutoEat").checked = routine.autoEat;
+  document.getElementById("routineMealType").value = routine.mealType;
+  document.getElementById("routineAutoSleep").checked = routine.autoSleep;
+  document.getElementById("routineAutoBath").checked = routine.autoBath;
+  document.getElementById("routineAutoDues").checked = routine.autoDues;
+  document.getElementById("routineBreakFestival").checked = routine.breakOnFestival;
+  document.getElementById("routineMonthlySummary").checked = routine.monthlySummary;
+  ROUTINE_PERIODS.forEach((period) => {
+    const select = document.getElementById(`routineSchedule${period}`);
+    select.innerHTML = ROUTINE_OPTIONS.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join("");
+    select.value = routine.schedule?.[period] || "idle";
+  });
+  document.getElementById("routineLog").innerHTML = getRoutineLogLines(state.player).map((line) => `<p>${escapeHtml(line)}</p>`).join("");
+}
+
+function readRoutineForm() {
+  const patch = {
+    autoEat: document.getElementById("routineAutoEat").checked,
+    mealType: document.getElementById("routineMealType").value,
+    autoSleep: document.getElementById("routineAutoSleep").checked,
+    autoBath: document.getElementById("routineAutoBath").checked,
+    autoDues: document.getElementById("routineAutoDues").checked,
+    breakOnFestival: document.getElementById("routineBreakFestival").checked,
+    monthlySummary: document.getElementById("routineMonthlySummary").checked,
+  };
+  ROUTINE_PERIODS.forEach((period) => { patch[`schedule_${period}`] = document.getElementById(`routineSchedule${period}`).value; });
+  return patch;
 }
 
 function renderAuditLog(state) {

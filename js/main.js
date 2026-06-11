@@ -6,6 +6,7 @@ import { applyMetabolism, getDeath } from "./metabolism.js";
 import { runStoryAction } from "./story.js";
 import { createNpcs, getPresentNpcs as getNpcsAtLocation } from "./npcs.js";
 import { getWorkById, createWorkAction, settleWork } from "./work.js";
+import { createBusinessAction, dailyBusinessExtendedSettlement, getBusinessContext, monthlyBusinessSettlement, settleBusinessAction } from "./business.js";
 import { institutions } from "./economy.js";
 import { purchaseItem } from "./items.js";
 import { gainSkill, getStudyOptions } from "./skills.js";
@@ -20,7 +21,10 @@ import { applyRicePressure, createWorldState, dailyWorldTick, getHooks } from ".
 import { canApplyHouseholdRegistration, runIdentityMoment, startHouseholdRegistration, tickHouseholdRegistration } from "./identity.js";
 import { getWenStudyMultiplier, monthlyScholarSettlement, tryHandleScholarFreeAction } from "./scholar.js";
 import { bindControls, render } from "./ui.js";
+import { createJusticeAction, dailyJusticeTick, isLivelihoodFrozen } from "./justice.js";
+import { checkAutomationNeeds, runRoutineDay, startRoutineMode, stopRoutineMode, updateRoutineSettings } from "./routine.js";
 import { clearSave, loadGame, saveGame } from "./save.js";
+import { canOpenTianji, isTianjiEnabled, restoreLastTianjiSnapshot, runTianjiCommand, setTianjiEnabled } from "./tianji.js";
 
 const MAX_FRAME_SECONDS = 0.5;
 const AUTOSAVE_REAL_MS = 30_000;
@@ -54,8 +58,21 @@ bindControls({
   onSaveSettings: saveSettings,
   onViewAuditLog: toggleAuditLog,
   onViewNeighborStatus: toggleNeighborStatus,
+  onViewBusinessLedger: toggleBusinessLedger,
+  onViewJustice: toggleJustice,
+  onViewRoutine: toggleRoutine,
+  onViewTianji: toggleTianjiPanel,
+  onTianjiClick: openTianjiPanel,
+  onTianjiLongPress: toggleTianjiEnabled,
+  onCloseTianji: toggleTianjiEnabled,
+  onRestoreTianji: restoreTianji,
+  onSaveRoutine: saveRoutineSettings,
+  onStartRoutine: startRoutineDays,
+  onStopRoutine: stopRoutine,
+  onJustice: startJustice,
   onToggleWork: toggleWorkList,
   onWork: startWork,
+  onBusiness: startBusiness,
   onHousingChange: changeHousing,
   onToggleStudy: toggleStudyList,
   onStudy: startStudy,
@@ -93,6 +110,10 @@ function createInitialState() {
     settingsOpen: false,
     showAuditLog: false,
     showNeighborStatus: false,
+    showBusinessLedger: false,
+    showJustice: false,
+    showRoutine: false,
+    showTianji: false,
     storySettings: loadStorySettings(saved?.storySettings),
     lastDailySettlement: saved?.lastDailySettlement ?? "",
   };
@@ -103,8 +124,13 @@ function tick(now) {
   lastFrameTime = now;
 
   if (!state.clock.paused && !state.dead && !state.storyLoading) {
-    const gameMinutes = realDeltaSeconds * getMinutesPerRealSecond(state.clock);
-    advanceGame(gameMinutes);
+    if (state.player.routine?.running && !state.currentAction) {
+      runOneRoutineDay();
+    } else {
+      const gameMinutes = realDeltaSeconds * getMinutesPerRealSecond(state.clock);
+      advanceGame(gameMinutes);
+      runRoutineAutomation();
+    }
   }
 
   if (now - lastAutosaveTime >= AUTOSAVE_REAL_MS) {
@@ -129,6 +155,7 @@ function advanceGame(gameMinutes, options = {}) {
 
 function startAction(actionName) {
   if (state.dead || state.currentAction || state.storyLoading) return;
+  stopRoutineMode(state.player);
 
   const actions = {
     eat: () => eatMeal(),
@@ -142,8 +169,11 @@ function startAction(actionName) {
 }
 
 async function startFreeAction(actionText) {
+  stopRoutineMode(state.player);
   const text = String(actionText || "").trim();
   if (!text || state.dead || state.currentAction || state.storyLoading) return;
+
+  if (isTianjiEnabled(state.player)) return startTianjiCommand(text);
 
   if (!ensureApiKeyOnFirstEnter()) {
     state.message = "请先设置DeepSeek API Key。";
@@ -197,6 +227,31 @@ async function startFreeAction(actionText) {
     state.clock.paused = state.dead ? true : wasPaused;
     lastFrameTime = performance.now();
     lastAutosaveTime = performance.now();
+    saveGame(state);
+    render(state);
+  }
+}
+
+async function startTianjiCommand(text) {
+  if (!ensureApiKeyOnFirstEnter()) {
+    state.message = "请先设置DeepSeek API Key。";
+    state.settingsOpen = true;
+    render(state);
+    return;
+  }
+  const wasPaused = state.clock.paused;
+  state.storyLoading = true;
+  state.clock.paused = true;
+  state.message = "天机解析中……";
+  render(state);
+  try {
+    const result = await runTianjiCommand(state, text, state.storySettings.apiKey);
+    state.message = result.receipt;
+  } catch (error) {
+    state.message = `天机失败：${error.message}`;
+  } finally {
+    state.storyLoading = false;
+    state.clock.paused = state.dead ? true : wasPaused;
     saveGame(state);
     render(state);
   }
@@ -274,8 +329,42 @@ function toggleRepairList() {
   render(state);
 }
 
-function startWork(workId) {
+function startBusiness(actionId) {
+  stopRoutineMode(state.player);
   if (state.dead || state.currentAction || state.storyLoading) return;
+  if (isLivelihoodFrozen(state.player)) { state.message = "官面状态压着，生计暂冻。"; render(state); return; }
+  const result = createBusinessAction(actionId, state);
+  if (!result.ok) {
+    state.message = result.message;
+    render(state);
+    return;
+  }
+  if (result.action) {
+    state.currentAction = result.action;
+    closeMenus();
+    state.message = `你开始${result.action.label}。`;
+  } else {
+    state.message = result.message;
+    if (result.transition) queueIdentityMoment(result.transition);
+    maybeTriggerBusinessScam(actionId);
+  }
+  saveGame(state);
+  render(state);
+}
+
+function startJustice(actionId) {
+  stopRoutineMode(state.player);
+  if (state.dead || state.currentAction || state.storyLoading) return;
+  const result = createJusticeAction(actionId, state);
+  state.message = result.message;
+  saveGame(state);
+  render(state);
+}
+
+function startWork(workId) {
+  stopRoutineMode(state.player);
+  if (state.dead || state.currentAction || state.storyLoading) return;
+  if (isLivelihoodFrozen(state.player)) { state.message = "官面状态压着，活计暂冻。"; render(state); return; }
 
   const action = createWorkAction(workId, state);
   if (!action) return;
@@ -293,6 +382,7 @@ function startWork(workId) {
 }
 
 function startStudy(studyId) {
+  stopRoutineMode(state.player);
   if (state.dead || state.currentAction || state.storyLoading) return;
   const option = getStudyOptions(state).find((item) => item.id === studyId);
   if (!option) return;
@@ -387,6 +477,7 @@ function seekDoctor() {
 }
 
 function startTravel(destinationId) {
+  stopRoutineMode(state.player);
   if (state.dead || state.currentAction || state.storyLoading) return;
 
   const route = getRoute(state.player.location, destinationId);
@@ -441,6 +532,11 @@ function advanceCurrentAction(gameMinutes) {
 
   if (state.currentAction.type === "livelihood") {
     advanceLivelihood(gameMinutes);
+    return;
+  }
+
+  if (state.currentAction.type === "business") {
+    advanceBusiness(gameMinutes);
     return;
   }
 
@@ -501,6 +597,18 @@ function advanceUtilityAction(gameMinutes) {
   saveGame(state);
 }
 
+function advanceBusiness(gameMinutes) {
+  state.currentAction.remainingMinutes -= gameMinutes;
+  if (state.currentAction.remainingMinutes > 0) return;
+  const action = state.currentAction;
+  state.currentAction = null;
+  const result = settleBusinessAction(state, action);
+  state.message = result.message;
+  appendStory(result.message);
+  saveGame(state);
+  render(state);
+}
+
 function advanceLivelihood(gameMinutes) {
   state.currentAction.remainingMinutes -= gameMinutes;
   if (state.currentAction.remainingMinutes > 0) return;
@@ -542,7 +650,7 @@ async function finishWorkAction(action) {
       `工中事件：${work.name}`,
       state.storySettings.apiKey,
       state.storySettings.mode,
-      `工种：${work.name}；地点：${location.name}；城市机构状态：${Object.values(institutions).map((item) => `${item.name}${item.status}`).join("；")}`,
+      `工种：${work.name}；地点：${location.name}；城市机构状态：${Object.values(institutions).map((item) => `${item.name}${item.status}`).join("；")}；${getBusinessContext(state)}`,
     );
     appendStory(event.scene);
     state.message = `${work.name}时出了点事。`;
@@ -603,12 +711,127 @@ function saveSettings(settings) {
 function toggleAuditLog() {
   state.showAuditLog = !state.showAuditLog;
   state.showNeighborStatus = false;
+  state.showBusinessLedger = false;
+  state.showJustice = false;
+  state.showRoutine = false;
+  state.showTianji = false;
   render(state);
 }
 
 function toggleNeighborStatus() {
   state.showNeighborStatus = !state.showNeighborStatus;
   state.showAuditLog = false;
+  state.showBusinessLedger = false;
+  state.showJustice = false;
+  render(state);
+}
+
+function toggleBusinessLedger() {
+  state.showBusinessLedger = !state.showBusinessLedger;
+  state.showAuditLog = false;
+  state.showNeighborStatus = false;
+  state.showJustice = false;
+  state.showRoutine = false;
+  state.showTianji = false;
+  render(state);
+}
+
+function toggleJustice() {
+  state.showJustice = !state.showJustice;
+  state.showAuditLog = false;
+  state.showNeighborStatus = false;
+  state.showBusinessLedger = false;
+  state.showRoutine = false;
+  state.showTianji = false;
+  render(state);
+}
+
+function toggleRoutine() {
+  state.showRoutine = !state.showRoutine;
+  state.showAuditLog = false;
+  state.showNeighborStatus = false;
+  state.showBusinessLedger = false;
+  state.showJustice = false;
+  state.showTianji = false;
+  render(state);
+}
+
+function toggleTianjiPanel() {
+  state.showTianji = !state.showTianji;
+  state.settingsOpen = true;
+  state.showAuditLog = false;
+  state.showNeighborStatus = false;
+  state.showBusinessLedger = false;
+  state.showJustice = false;
+  state.showRoutine = false;
+  render(state);
+}
+
+function openTianjiPanel() {
+  state.settingsOpen = true;
+  state.showTianji = true;
+  state.showAuditLog = false;
+  state.showNeighborStatus = false;
+  state.showBusinessLedger = false;
+  state.showJustice = false;
+  state.showRoutine = false;
+  render(state);
+}
+
+function toggleTianjiEnabled() {
+  const enabled = isTianjiEnabled(state.player);
+  if (enabled) {
+    const result = setTianjiEnabled(state, false);
+    state.message = result.reason;
+    saveGame(state);
+    render(state);
+    return;
+  }
+  const gate = canOpenTianji(state);
+  if (!gate.ok) { state.message = gate.reason; render(state); return; }
+  const warningOk = window.confirm("天机一开,世界由你。此后种种,不复为命。");
+  if (!warningOk) return;
+  let passphrase = state.player.tianji?.passphrase || "";
+  if (!passphrase) {
+    passphrase = (window.prompt("首次开启天机，请设四字口令：") || "").trim();
+    if (Array.from(passphrase).length !== 4) { state.message = "口令须为四字。"; render(state); return; }
+  } else {
+    const input = (window.prompt("请输入天机四字口令：") || "").trim();
+    if (input !== passphrase) { state.message = "口令不合，天机未开。"; render(state); return; }
+  }
+  stopRoutineMode(state.player, "天机已开，过日子自动停下。");
+  const result = setTianjiEnabled(state, true, passphrase);
+  state.message = result.reason;
+  saveGame(state);
+  render(state);
+}
+
+function restoreTianji() {
+  const result = restoreLastTianjiSnapshot(state);
+  state.message = result.message;
+  saveGame(state);
+  render(state);
+}
+
+function saveRoutineSettings(settings) {
+  updateRoutineSettings(state.player, settings);
+  state.message = "起居设置已保存。";
+  saveGame(state);
+  render(state);
+}
+
+function startRoutineDays(days = 30) {
+  startRoutineMode(state.player, days);
+  state.clock.paused = false;
+  state.message = `开始过日子（${days}日内）。`;
+  saveGame(state);
+  render(state);
+}
+
+function stopRoutine() {
+  stopRoutineMode(state.player, "手动暂停过日子。");
+  state.message = "过日子已暂停。";
+  saveGame(state);
   render(state);
 }
 
@@ -665,6 +888,9 @@ function runDailySettlementFor(dateParts) {
     illnessMultiplier: getHooks(state.world).illnessMultiplier,
   });
   dailyLaborSettlement(state.player, dateKey, Boolean(state.player.didHeavyWorkToday), { cold: isColdMonth(dateParts.month) });
+  dailyBusinessExtendedSettlement(state, dateParts).forEach(appendStory);
+  if (dateParts.day === 1) monthlyBusinessSettlement(state, dateParts).forEach(appendStory);
+  dailyJusticeTick(state, dateParts).forEach(appendStory);
   state.player.didHeavyWorkToday = false;
   handleMonthlyRent(dateParts);
   flushNeighborNarratives();
@@ -914,6 +1140,16 @@ async function narrateQianContact() {
   }
 }
 
+async function maybeTriggerBusinessScam() {
+  if (!state.storySettings.apiKey) return;
+  const tag = state.player.business?.pendingScamTag || "";
+  if (!tag) return;
+  state.player.business.pendingScamTag = "";
+  await triggerScamIfAny({ tag });
+  saveGame(state);
+  render(state);
+}
+
 async function triggerScamIfAny(context = {}) {
   if (!state.storySettings.apiKey) return;
   const scam = await maybeTriggerScam(state, state.storySettings.apiKey, state.storySettings.mode, context);
@@ -1023,6 +1259,32 @@ function createScholarHelpers(wasPaused) {
   };
 }
 
+function createRoutineHelpers() {
+  return {
+    advance: (minutes, options = {}) => advanceGame(minutes, options),
+    sleepToMorning,
+    dateKey: getDateKey,
+    wenMultiplier: () => getWenStudyMultiplier(state.player),
+  };
+}
+
+function runRoutineAutomation() {
+  const result = checkAutomationNeeds(state, createRoutineHelpers());
+  if (result?.ok === false) {
+    state.clock.paused = true;
+    state.message = result.message;
+    saveGame(state);
+  }
+}
+
+function runOneRoutineDay() {
+  const result = runRoutineDay(state, createRoutineHelpers());
+  state.message = result.message;
+  if (!result.ok) state.clock.paused = true;
+  checkDeath();
+  saveGame(state);
+}
+
 function restartGame() {
   clearSave();
   state = {
@@ -1046,6 +1308,10 @@ function restartGame() {
     settingsOpen: false,
     showAuditLog: false,
     showNeighborStatus: false,
+    showBusinessLedger: false,
+    showJustice: false,
+    showRoutine: false,
+    showTianji: false,
     storySettings: loadStorySettings(),
     lastDailySettlement: "",
   };

@@ -20,6 +20,7 @@ export const LOCATIONS = [
     neighbors: [
       { id: "qinghefang", minutes: 15 },
       { id: "dock", minutes: 20 },
+      { id: "morning_gate_market", minutes: 25 },
       { id: "slum_alley", minutes: 30 },
     ],
   },
@@ -71,6 +72,7 @@ export const LOCATIONS = [
     description: "河埠船桅林立，脚夫扛货的号子沿水面传开。",
     neighbors: [
       { id: "rice_market", minutes: 20 },
+      { id: "morning_gate_market", minutes: 15 },
       { id: "south_homes", minutes: 30 },
       { id: "imperial_street", minutes: 35 },
     ],
@@ -84,6 +86,15 @@ export const LOCATIONS = [
       { id: "city_god_temple", minutes: 15 },
       { id: "academy", minutes: 15 },
       { id: "dock", minutes: 30 },
+    ],
+  },
+  {
+    id: "morning_gate_market",
+    name: "城门外晨市",
+    description: "城门未启透亮时，菜担鱼篓已在灯影下相抵，临安城外的挑夫压低嗓子讲价，油灯照着湿叶与河鲜鳞光；晨6点到9点最活，过了辰末只剩烂叶残货，量少质劣。",
+    neighbors: [
+      { id: "dock", minutes: 15 },
+      { id: "rice_market", minutes: 25 },
     ],
   },
   {
