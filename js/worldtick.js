@@ -1,3 +1,6 @@
+import { chance } from "./luck.js";
+import { normalizeNeighborState } from "./neighborchain.js";
+
 export const RICE_BASE_DOU_PRICE = 80;
 
 const EVENT_POOL = [
@@ -13,6 +16,7 @@ const EVENT_POOL = [
   { id: "dock_injury", name: "码头伤人", text: "码头有脚夫伤了腿，众人说船行催得太狠。", days: [7, 14], hook: { porterMultiplier: 1.1, illnessMultiplier: 1.1 } },
   { id: "charity_clothes", name: "旧衣散发", text: "清河坊有人散发旧衣，穷人排成一线。", days: [5, 9], seasons: ["冬"] },
   { id: "grain_arrives", name: "粮船入港", text: "几艘粮船入港，米市掌柜脸色松了些。", days: [7, 12], hook: { riceDelta: -8 } },
+  { id: "clerk_vacancy", name: "衙门补吏", text: "府衙传出补吏缺额，懂文算又有人引荐者才敢递话。", days: [20, 20], hook: { clerkVacancy: 1 }, rare: true },
 ];
 
 export function createWorldState(saved = {}) {
@@ -21,6 +25,8 @@ export function createWorldState(saved = {}) {
     activeEvents: Array.isArray(saved.activeEvents) ? saved.activeEvents : [],
     lastRiceMonthKey: typeof saved.lastRiceMonthKey === "string" ? saved.lastRiceMonthKey : "",
     lastEventCheckKey: typeof saved.lastEventCheckKey === "string" ? saved.lastEventCheckKey : "",
+    neighborChains: normalizeNeighborState(saved.neighborChains),
+    dockWageDelayDays: Number.isFinite(saved.dockWageDelayDays) ? saved.dockWageDelayDays : 0,
   };
 }
 
@@ -36,7 +42,8 @@ export function dailyWorldTick(world, dateParts, season) {
   const eventKey = `${monthKey}-${dateParts.day}`;
   if ([1, 15].includes(dateParts.day) && world.lastEventCheckKey !== eventKey) {
     world.lastEventCheckKey = eventKey;
-    if (world.activeEvents.length < 3 && Math.random() < 0.4) addRandomEvent(world, season);
+    if (world.activeEvents.length < 3 && chance(0.4, "neutral")) addRandomEvent(world, season);
+    if (world.activeEvents.length < 3 && chance(0.08, "neutral")) addSpecificEvent(world, season, "clerk_vacancy");
   }
 }
 
@@ -70,9 +77,17 @@ export function applyRicePressure(npcs, riceIndex) {
 
 function addRandomEvent(world, season) {
   const activeIds = new Set(world.activeEvents.map((event) => event.id));
-  const candidates = EVENT_POOL.filter((event) => !activeIds.has(event.id) && (!event.seasons || event.seasons.includes(season)));
+  const candidates = EVENT_POOL.filter((event) => !event.rare && !activeIds.has(event.id) && (!event.seasons || event.seasons.includes(season)));
   if (candidates.length === 0) return;
   const event = candidates[randomInt(0, candidates.length - 1)];
+  world.activeEvents.push({ ...event, remainingDays: randomInt(event.days[0], event.days[1]) });
+}
+
+function addSpecificEvent(world, season, eventId) {
+  const activeIds = new Set(world.activeEvents.map((event) => event.id));
+  if (activeIds.has(eventId)) return;
+  const event = EVENT_POOL.find((item) => item.id === eventId && (!item.seasons || item.seasons.includes(season)));
+  if (!event) return;
   world.activeEvents.push({ ...event, remainingDays: randomInt(event.days[0], event.days[1]) });
 }
 

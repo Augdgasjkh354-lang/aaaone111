@@ -5,7 +5,7 @@ const MAX_MEMORY_COUNT = 20;
 const COMPRESSION_SOURCE_COUNT = 15;
 
 export function normalizeMemories(savedMemories) {
-  return Array.isArray(savedMemories) ? savedMemories.filter(isValidMemory) : [];
+  return Array.isArray(savedMemories) ? savedMemories.filter(isValidMemory).map((memory) => ({ ...memory, pivotal: Boolean(memory.pivotal) })) : [];
 }
 
 export function getRecentMemories(player, count = 5) {
@@ -43,7 +43,8 @@ async function compressOldMemories(player, apiKey) {
 
     const text = summary.trim().slice(0, 100);
     if (!text) return;
-    player.memories = [{ date: "早年记忆", text }, ...remainingMemories].slice(-MAX_MEMORY_COUNT);
+    const pivotal = player.memories.filter((memory) => memory.pivotal);
+    player.memories = [...pivotal, { date: "早年记忆", text }, ...remainingMemories].slice(-MAX_MEMORY_COUNT);
   } catch (error) {
     console.warn("记忆压缩失败，将留待下次尝试。", error);
   }

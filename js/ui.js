@@ -9,6 +9,10 @@ import { describeIllnesses } from "./illness.js";
 import { getSkillSummary, getStudyOptions } from "./skills.js";
 import { getRiceDouPrice } from "./worldtick.js";
 import { getSeasonByMonth } from "./season.js";
+import { isFestivalGamblingLegal } from "./festival.js";
+import { getActiveNeighborStatuses } from "./neighborchain.js";
+import { canApplyHouseholdRegistration } from "./identity.js";
+import { getExamTimelineText } from "./scholar.js";
 
 export function bindControls(handlers) {
   document.getElementById("speedSelect").addEventListener("change", (event) => {
@@ -18,6 +22,7 @@ export function bindControls(handlers) {
   document.getElementById("pauseButton").addEventListener("click", handlers.onTogglePause);
   document.getElementById("restartButton").addEventListener("click", handlers.onRestart);
   document.getElementById("deathRestartButton").addEventListener("click", handlers.onRestart);
+  document.getElementById("tianjiMark").addEventListener("click", () => window.alert("天机未开"));
   document.getElementById("travelToggleButton").addEventListener("click", handlers.onToggleTravel);
   document.getElementById("cancelTravelButton").addEventListener("click", handlers.onCancelTravel);
   document.getElementById("settingsButton").addEventListener("click", handlers.onOpenSettings);
@@ -32,6 +37,8 @@ export function bindControls(handlers) {
     handlers.onHousingChange(event.target.value);
   });
   document.getElementById("viewAuditLogButton").addEventListener("click", handlers.onViewAuditLog);
+  document.getElementById("neighborStatusButton").addEventListener("click", handlers.onViewNeighborStatus);
+  document.getElementById("householdRegistrationButton").addEventListener("click", handlers.onHouseholdRegistration);
   document.getElementById("studyToggleButton").addEventListener("click", handlers.onToggleStudy);
   document.getElementById("purchaseToggleButton").addEventListener("click", handlers.onTogglePurchase);
   document.getElementById("repairToggleButton").addEventListener("click", handlers.onToggleRepair);
@@ -92,7 +99,7 @@ function renderTime(state) {
   const { dateText, timeText } = formatClock(state.clock);
   document.getElementById("dateLine").textContent = dateText;
   const { month } = getDateParts(state.clock);
-  document.getElementById("timeLine").textContent = `${timeText} · ${getSeasonByMonth(month)}`;
+  document.getElementById("timeLine").textContent = `${timeText} · ${getSeasonByMonth(month)} · ${getExamTimelineText(state.player)}`;
 
   const speedSelect = document.getElementById("speedSelect");
   speedSelect.value = String(state.clock.speedIndex);
@@ -126,6 +133,7 @@ function renderPlayer(state) {
       <div class="status-value">${escapeHtml(location.name)}</div>
       <div class="status-description">${escapeHtml(locationDescription)}</div>
       <div class="status-description">此处有：${escapeHtml(presentNpcText)}</div>
+      <div class="status-description">身份：${escapeHtml(player.identity)}</div>
       <div class="status-description">住所：${escapeHtml(player.housing)}</div>
       <div class="status-description">衣着：${escapeHtml(player.clothing)}；整洁：${getCleanlinessText(player.cleanliness)}</div>
       <div class="status-description">能力：${escapeHtml(getSkillSummary(player.skills))}</div>
@@ -229,7 +237,7 @@ function renderStudyControls(state, busy) {
   if (!state.studyOpen || busy) { list.innerHTML = ""; return; }
   list.innerHTML = getStudyOptions(state).map((item) => `
     <button type="button" data-study="${item.id}" ${item.available ? "" : "disabled"}>
-      <span>${escapeHtml(item.name)}</span><small>${item.durationMinutes / 60}小时 · ${item.available ? "能力+1" : escapeHtml(item.reason)}</small>
+      <span>${escapeHtml(item.name)}</span><small>${item.durationMinutes / 60}小时 · ${item.available ? "修习进度" : escapeHtml(item.reason)}</small>
     </button>`).join("");
 }
 
@@ -248,9 +256,14 @@ function renderRepairControls(state, busy) {
   const list = document.getElementById("repairList");
   list.classList.toggle("hidden", !state.repairOpen || busy);
   if (!state.repairOpen || busy) { list.innerHTML = ""; return; }
+  const gambleOpen = isFestivalGamblingLegal(getDateParts(state.clock), state.player.location);
+  const gambleButtons = [10, 50, 100, 500].map((bet) => `<button type="button" data-repair="gamble_${bet}" ${gambleOpen && state.player.coins >= bet ? "" : "disabled"}><span>关扑${bet}文</span><small>${gambleOpen ? "胜得双倍" : "节庆或瓦子开放"}</small></button>`).join("");
   list.innerHTML = `
     <button type="button" data-repair="river_bath" ${state.player.location === "dock" ? "" : "disabled"}><span>河边洗澡</span><small>2小时 · 免费</small></button>
     <button type="button" data-repair="bathhouse" ${state.player.location === "qinghefang" && state.player.coins >= 5 ? "" : "disabled"}><span>浴堂洗澡</span><small>1小时 · 5文</small></button>
+    <button type="button" data-repair="divination" ${state.player.location === "city_god_temple" && state.player.coins >= 10 ? "" : "disabled"}><span>卦肆问卜</span><small>1小时 · 10文</small></button>
+    ${gambleButtons}
+    <button type="button" data-repair="massage"><span>推拿将养</span><small>需安郎中在场 · 150文</small></button>
     <button type="button" data-repair="doctor"><span>求医</span><small>需安郎中在场</small></button>`;
 }
 
@@ -309,8 +322,25 @@ function renderSettings(state) {
     document.getElementById("thinkingModeSelect").value = state.storySettings.mode || "disabled";
   }
   document.getElementById("housingSelect").value = state.player.housing;
+  const registrationGate = canApplyHouseholdRegistration(state);
+  const registrationButton = document.getElementById("householdRegistrationButton");
+  registrationButton.classList.toggle("hidden", !registrationGate.ok);
+  registrationButton.disabled = !registrationGate.ok;
+  registrationButton.title = registrationGate.ok ? "满足条件，办理需3日" : registrationGate.reason;
   document.querySelector('#housingSelect option[value="破庙"]').disabled = !state.player.unlockedHousing?.temple;
+  renderNeighborStatus(state);
   renderAuditLog(state);
+}
+
+
+function renderNeighborStatus(state) {
+  const log = document.getElementById("neighborStatusLog");
+  log.classList.toggle("hidden", !state.showNeighborStatus);
+  if (!state.showNeighborStatus) return;
+  const statuses = getActiveNeighborStatuses(state.world);
+  log.innerHTML = statuses.length > 0
+    ? statuses.map((line) => `<p>${escapeHtml(line)}</p>`).join("")
+    : `<p>街坊眼下无急事。</p>`;
 }
 
 function renderAuditLog(state) {

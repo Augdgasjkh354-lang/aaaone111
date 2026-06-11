@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="css/main.css" />
   </head>
   <body>
+    <button type="button" id="tianjiMark" class="tianji-mark" aria-label="天机">天机</button>
     <main class="app-shell" id="app">
       <header class="top-bar">
         <div class="time-readout" aria-live="polite">
@@ -93,9 +94,12 @@
         </select>
         <div class="settings-actions">
           <button type="button" id="saveSettingsButton">保存</button>
+          <button type="button" id="householdRegistrationButton">办附籍</button>
+          <button type="button" id="neighborStatusButton">街坊近况</button>
           <button type="button" id="viewAuditLogButton">查看日志</button>
           <button type="button" id="closeSettingsButton">关闭</button>
         </div>
+        <div class="audit-log hidden" id="neighborStatusLog"></div>
         <div class="audit-log hidden" id="auditLog"></div>
       </div>
     </div>
